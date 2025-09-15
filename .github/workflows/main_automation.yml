@@ -1,0 +1,73 @@
+name: 3PL Main Automation
+
+on:
+  schedule:
+    # 월~금요일 KST 12:05 (정오 지난 5분)에 실행
+    # UTC 기준: KST는 UTC+9이므로 03:05
+    - cron: '5 3 * * 1-5'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  main_processing:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set timezone to KST
+      run: |
+        sudo timedatectl set-timezone Asia/Seoul
+        
+    - name: Run main processing
+      env:
+        # 미니학습지 환경변수
+        WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+        WP_WOO_CONSUMER_KEY: ${{ secrets.WP_WOO_CONSUMER_KEY }}
+        WP_WOO_CONSUMER_SECRET: ${{ secrets.WP_WOO_CONSUMER_SECRET }}
+        WP_APP_USER: ${{ secrets.WP_APP_USER }}
+        WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        
+        # 독독독 환경변수
+        DOK_WP_BASE_URL: ${{ secrets.DOK_WP_BASE_URL }}
+        DOK_WP_WOO_CONSUMER_KEY: ${{ secrets.DOK_WP_WOO_CONSUMER_KEY }}
+        DOK_WP_WOO_CONSUMER_SECRET: ${{ secrets.DOK_WP_WOO_CONSUMER_SECRET }}
+        DOK_WP_APP_USER: ${{ secrets.DOK_WP_APP_USER }}
+        DOK_WP_APP_PASSWORD: ${{ secrets.DOK_WP_APP_PASSWORD }}
+        
+        # Google API
+        GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+        GOOGLE_SHARED_DRIVE_ID: ${{ secrets.GOOGLE_SHARED_DRIVE_ID }}
+        GOOGLE_FOLDER_ID: ${{ secrets.GOOGLE_FOLDER_ID }}
+        
+        # 이메일 설정
+        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        HAPPY_TOGETHER_PRODUCT_ID: ${{ secrets.HAPPY_TOGETHER_PRODUCT_ID }}
+        
+      run: |
+        echo "🚀 3PL Main Processing 시작 - $(date '+%Y-%m-%d %H:%M:%S KST')"
+        python main.py
+        
+    - name: Upload logs only
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: main-logs-${{ github.run_number }}
+        path: |
+          *.log
+        retention-days: 3

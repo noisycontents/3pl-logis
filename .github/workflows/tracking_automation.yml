@@ -1,0 +1,60 @@
+name: 3PL Tracking Automation
+
+on:
+  schedule:
+    # 월~금요일 KST 15:05 (오후 3시 5분)에 실행
+    # UTC 기준: KST는 UTC+9이므로 06:05
+    - cron: '5 6 * * 1-5'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  tracking_processing:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Set timezone to KST
+      run: |
+        sudo timedatectl set-timezone Asia/Seoul
+        
+    - name: Run tracking updater
+      env:
+        # 미니학습지 환경변수
+        WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+        WP_WOO_CONSUMER_KEY: ${{ secrets.WP_WOO_CONSUMER_KEY }}
+        WP_WOO_CONSUMER_SECRET: ${{ secrets.WP_WOO_CONSUMER_SECRET }}
+        
+        # 독독독 환경변수
+        DOK_WP_BASE_URL: ${{ secrets.DOK_WP_BASE_URL }}
+        DOK_WP_WOO_CONSUMER_KEY: ${{ secrets.DOK_WP_WOO_CONSUMER_KEY }}
+        DOK_WP_WOO_CONSUMER_SECRET: ${{ secrets.DOK_WP_WOO_CONSUMER_SECRET }}
+        
+        # Google API
+        GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+        GOOGLE_SHARED_DRIVE_ID: ${{ secrets.GOOGLE_SHARED_DRIVE_ID }}
+        GOOGLE_FOLDER_ID: ${{ secrets.GOOGLE_FOLDER_ID }}
+        
+      run: |
+        echo "📦 3PL Tracking Updater 시작 - $(date '+%Y-%m-%d %H:%M:%S KST')"
+        python tracking_updater.py
+        
+    - name: Upload logs only
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: tracking-logs-${{ github.run_number }}
+        path: |
+          *.log
+        retention-days: 3
