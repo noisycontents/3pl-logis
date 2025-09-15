@@ -1,10 +1,10 @@
 name: 3PL Tracking Automation
 
 on:
-  schedule:
-    # 월~금요일 KST 15:05 (오후 3시 5분)에 실행
-    # UTC 기준: KST는 UTC+9이므로 06:05
-    - cron: '5 6 * * 1-5'
+  # schedule:
+  #   # 월~금요일 KST 15:05 (오후 3시 5분)에 실행
+  #   # UTC 기준: KST는 UTC+9이므로 06:05
+  #   - cron: '5 6 * * 1-5'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
