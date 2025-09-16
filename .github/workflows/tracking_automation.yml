@@ -41,8 +41,16 @@ jobs:
         DOK_WP_WOO_CONSUMER_KEY: ${{ secrets.DOK_WP_WOO_CONSUMER_KEY }}
         DOK_WP_WOO_CONSUMER_SECRET: ${{ secrets.DOK_WP_WOO_CONSUMER_SECRET }}
         
-        # Google API
-        GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+        # Google Service Account (개별 필드)
+        GOOGLE_PROJECT_ID: ${{ secrets.GOOGLE_PROJECT_ID }}
+        GOOGLE_PRIVATE_KEY_ID: ${{ secrets.GOOGLE_PRIVATE_KEY_ID }}
+        GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+        GOOGLE_CLIENT_EMAIL: ${{ secrets.GOOGLE_CLIENT_EMAIL }}
+        GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        GOOGLE_AUTH_URI: ${{ secrets.GOOGLE_AUTH_URI }}
+        GOOGLE_TOKEN_URI: ${{ secrets.GOOGLE_TOKEN_URI }}
+        GOOGLE_AUTH_PROVIDER_X509_CERT_URL: ${{ secrets.GOOGLE_AUTH_PROVIDER_X509_CERT_URL }}
+        GOOGLE_CLIENT_X509_CERT_URL: ${{ secrets.GOOGLE_CLIENT_X509_CERT_URL }}
         GOOGLE_SHARED_DRIVE_ID: ${{ secrets.GOOGLE_SHARED_DRIVE_ID }}
         GOOGLE_FOLDER_ID: ${{ secrets.GOOGLE_FOLDER_ID }}
         

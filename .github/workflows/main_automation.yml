@@ -45,11 +45,8 @@ jobs:
         DOK_WP_APP_USER: ${{ secrets.DOK_WP_APP_USER }}
         DOK_WP_APP_PASSWORD: ${{ secrets.DOK_WP_APP_PASSWORD }}
         
-        # Google API
+        # Google API (Maps만 사용)
         GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-        GOOGLE_SHARED_DRIVE_ID: ${{ secrets.GOOGLE_SHARED_DRIVE_ID }}
-        GOOGLE_FOLDER_ID: ${{ secrets.GOOGLE_FOLDER_ID }}
         
         # 이메일 설정
         SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
