@@ -206,8 +206,8 @@ def process_mini_international_orders(df):
     
     # 데이터 처리
     overseas["쇼핑몰상품코드"] = overseas["품번코드"]
-    overseas["수령인 연락처1"] = overseas["수령인 연락처"]
-    overseas["수령인 연락처2"] = overseas["수령인 연락처"]
+    overseas["수령인연락처1"] = overseas["수령인 연락처"]
+    overseas["수령인연락처2"] = overseas["수령인 연락처"]
     overseas["송장번호"] = ""
     overseas["국가코드"] = ""
     

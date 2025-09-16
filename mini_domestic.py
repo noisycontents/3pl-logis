@@ -33,8 +33,8 @@ def process_mini_domestic_orders(df):
     
     # 데이터 처리
     domestic["쇼핑몰상품코드"] = domestic["품번코드"]
-    domestic["수령인 연락처1"] = domestic["수령인 연락처"]
-    domestic["수령인 연락처2"] = domestic["수령인 연락처"]
+    domestic["수령인연락처1"] = domestic["수령인 연락처"]
+    domestic["수령인연락처2"] = domestic["수령인 연락처"]
     domestic["송장번호"] = ""
     domestic["국가코드"] = ""
     

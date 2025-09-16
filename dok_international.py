@@ -57,8 +57,8 @@ def process_dok_international_orders(df):
     
     # 데이터 처리
     overseas["쇼핑몰상품코드"] = overseas["품번코드"]
-    overseas["수령인 연락처1"] = overseas["수령인 연락처"]
-    overseas["수령인 연락처2"] = overseas["수령인 연락처"]
+    overseas["수령인연락처1"] = overseas["수령인 연락처"]
+    overseas["수령인연락처2"] = overseas["수령인 연락처"]
     overseas["송장번호"] = ""
     overseas["국가코드"] = ""
     
@@ -90,7 +90,7 @@ def process_dok_international_orders(df):
         overseas_ems = pd.concat([old, overseas_ems], ignore_index=True)
     
     overseas_ems.to_excel(ems_path, index=False)
-    apply_string_format(ems_path, ["수량", "수령인 연락처1", "수령인 연락처2", "우편번호"])
+    apply_string_format(ems_path, ["수량", "수령인연락처1", "수령인연락처2", "우편번호"])
     print("📦 독독독 EMS 주문서 저장 완료:", ems_path)
     
     return ems_path
