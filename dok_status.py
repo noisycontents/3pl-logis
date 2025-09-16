@@ -86,8 +86,75 @@ def create_csv_for_condition(df, condition_name, order_status, filename_suffix):
     
     return csv_path
 
+def process_dok_reservation_status_change(df):
+    """독독독 예약 상품 상태 변경 (주문서 작성 전)"""
+    if df.empty:
+        print("✅ 독독독: 예약 상품 없음")
+        return []
+    
+    print("--- 독독독 예약 상품 상태 변경 시작 ---")
+    
+    # 예약 상품만 필터링
+    reservation_mask = df["SKU"].str.contains("예약", na=False)
+    reservation_df = df[reservation_mask].copy()
+    
+    if reservation_df.empty:
+        print("✅ 독독독: 예약 상품 없음")
+        return []
+    
+    # 예약 상품 상태 변경
+    print("🔄 독독독 예약 상품 WooCommerce 상태 변경 중...")
+    
+    updated_count = 0
+    for _, row in reservation_df.iterrows():
+        order_id = row["주문번호"]
+        success = update_order_status_in_woocommerce(order_id, "processing")
+        if success:
+            updated_count += 1
+    
+    print(f"✅ 독독독 {updated_count}개 주문 상태 변경 완료")
+    
+    # CSV 파일 생성
+    today_str = datetime.today().strftime('%y%m%d')
+    csv_path = create_csv_for_condition(reservation_df, "예약 상품 (처리중)", "processing", f"{today_str}_처리중")
+    
+    return [csv_path] if csv_path else []
+
+def process_dok_digital_status_change(df):
+    """독독독 디지털 상품 상태 변경"""
+    if df.empty:
+        print("✅ 독독독: 디지털 상품 없음")
+        return []
+    
+    print("--- 독독독 디지털 상품 (배송완료) 상품 처리 시작 ---")
+    
+    # 디지털 상품만 필터링
+    digital_mask = df["SKU"].str.endswith("[디지털]", na=False)
+    digital_df = df[digital_mask].copy()
+    
+    if digital_df.empty:
+        print("✅ 독독독: 디지털 상품 없음")
+        return []
+    
+    # 디지털 상품 상태 변경
+    print("🔄 독독독 디지털 상품 WooCommerce 상태 변경 중...")
+    
+    updated_count = 0
+    for _, row in digital_df.iterrows():
+        order_id = row["주문번호"]
+        success = update_order_status_in_woocommerce(order_id, "shipped")
+        if success:
+            updated_count += 1
+    
+    print(f"✅ 독독독 {updated_count}개 주문 상태 변경 완료")
+    
+    # CSV 파일 생성
+    csv_path = create_csv_for_condition(digital_df, "디지털 상품 (배송완료)", "shipped", "배송완료")
+    
+    return [csv_path] if csv_path else []
+
 def process_dok_status_changes(df):
-    """독독독 주문상태 변경 처리 (전체)"""
+    """독독독 주문상태 변경 처리 (전체) - 레거시 함수"""
     if df.empty:
         print("✅ 독독독: 상태 변경할 주문 없음")
         return []

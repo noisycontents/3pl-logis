@@ -10,6 +10,8 @@ import re
 import time
 from dotenv import load_dotenv
 from pathlib import Path
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 # .env 파일 로드
 load_dotenv()
@@ -271,7 +273,11 @@ def fetch_orders_from_wp(base_url, auth_info, start_date, end_date, status='comp
         return []
 
 def convert_orders_to_dataframe(orders, site_label):
-    """주문 데이터를 DataFrame으로 변환 (WooCommerce 데이터 직접 사용)"""
+    """주문 데이터를 DataFrame으로 변환 (상품명 매핑 적용)"""
+    
+    # Google Sheets에서 상품명 매핑 데이터 가져오기
+    product_mapping = get_product_name_mapping()
+    
     order_items = []
     
     for order in orders:
@@ -293,22 +299,34 @@ def convert_orders_to_dataframe(orders, site_label):
             raw_sku = item.get('sku', '')
             clean_sku = raw_sku.split('-')[0] if raw_sku else ''  # 하이픈 이하 삭제
             
+            # Google Sheets에서 매핑된 상품명 가져오기 (없으면 원래 상품명 사용)
+            original_product_name = item.get('name', '')
+            mapped_product_name = product_mapping.get(clean_sku, original_product_name)
+            
+            # 매핑 결과 로그 (처음 몇 개만)
+            if len(order_items) < 3:  # 처음 3개만 로그 출력
+                if mapped_product_name != original_product_name:
+                    print(f"   📋 상품명 매핑: {clean_sku} → {mapped_product_name}")
+                else:
+                    print(f"   📋 매핑 없음: {clean_sku} → 원래 상품명 사용")
+            
             order_items.append({
                 '주문번호': str(order_id),
                 '주문상태': '완료됨' if order_status == 'completed' else order_status,
                 'SKU': clean_sku,
-                '상품명': item.get('name', ''),
-                '품번코드': clean_sku,
+                '상품명': mapped_product_name,  # 매핑된 상품명 사용
+                '품번코드': clean_sku,  # 하이픈 제거된 SKU (기존 방식)
+                '쇼핑몰상품코드': raw_sku,  # 원래 SKU 값 (하이픈 포함)
                 '수량': str(item.get('quantity', 1)),
                 '수령인명': (shipping.get('first_name', '') + ' ' + shipping.get('last_name', '')).strip(),
                 '수령인 연락처': billing.get('phone', ''),
                 '우편번호': shipping.get('postcode', ''),
                 '배송지주소': f"{shipping.get('address_1', '')} {shipping.get('address_2', '')} {shipping.get('city', '')} {shipping.get('state', '')} {shipping.get('country', '')}".strip(),
-                '배송 메모': customer_note
+                '배송메세지': customer_note
             })
     
     df = pd.DataFrame(order_items)
-    print(f"✅ {site_label} 주문 데이터 변환 완료: {len(df)}개 항목 (SKU 매핑 불필요)")
+    print(f"✅ {site_label} 주문 데이터 변환 완료: {len(df)}개 항목 (상품명 매핑 적용)")
     return df
 
 def is_korean_address(addr):
@@ -407,3 +425,88 @@ def apply_string_format(filepath, columns):
         print(f"✅ Excel 형식 적용 완료: {filepath}")
     except Exception as e:
         print(f"❌ Excel 형식 적용 실패: {e}")
+
+def get_product_name_mapping():
+    """Google Sheets에서 품번코드-상품명 매핑 데이터 가져오기"""
+    
+    print("📋 상품명 매핑 데이터 가져오는 중...")
+    
+    # Google Service Account 인증
+    try:
+        service_account_info = {
+            "type": "service_account",
+            "project_id": os.getenv('GOOGLE_PROJECT_ID'),
+            "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
+            "private_key": os.getenv('GOOGLE_PRIVATE_KEY'),
+            "client_email": os.getenv('GOOGLE_CLIENT_EMAIL'),
+            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+            "auth_uri": os.getenv('GOOGLE_AUTH_URI'),
+            "token_uri": os.getenv('GOOGLE_TOKEN_URI'),
+            "auth_provider_x509_cert_url": os.getenv('GOOGLE_AUTH_PROVIDER_X509_CERT_URL'),
+            "client_x509_cert_url": os.getenv('GOOGLE_CLIENT_X509_CERT_URL'),
+            "universe_domain": "googleapis.com"
+        }
+        
+        required_fields = ['project_id', 'private_key', 'client_email']
+        missing_fields = [field for field in required_fields if not service_account_info.get(field)]
+        
+        if missing_fields:
+            print(f"❌ Google Service Account 정보 누락: {missing_fields}")
+            return {}
+        
+        scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+        credentials = service_account.Credentials.from_service_account_info(
+            service_account_info, scopes=scopes
+        )
+        
+        service = build('sheets', 'v4', credentials=credentials)
+        
+        # 스프레드시트 ID와 시트명
+        spreadsheet_id = '1BnTTqI8W_P3KtJe4E4eQU-PfR-U0WL6HMpGBDJdyvUk'
+        range_name = '실사용!A:B'  # 상품명, 품번코드 컬럼
+        
+        # 데이터 조회
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+        
+        values = result.get('values', [])
+        
+        if not values:
+            print("❌ 매핑 데이터가 없습니다")
+            return {}
+        
+        # 매핑 딕셔너리 생성 {품번코드: 상품명}
+        mapping = {}
+        header_row = values[0] if values else []
+        
+        # 헤더에서 컬럼 인덱스 찾기
+        product_name_idx = -1
+        product_code_idx = -1
+        
+        for i, header in enumerate(header_row):
+            if '상품명' in str(header):
+                product_name_idx = i
+            elif '품번코드' in str(header):
+                product_code_idx = i
+        
+        if product_name_idx == -1 or product_code_idx == -1:
+            print(f"❌ 필요한 컬럼을 찾을 수 없습니다. 헤더: {header_row}")
+            return {}
+        
+        # 데이터 행 처리 (헤더 제외)
+        for row in values[1:]:
+            if len(row) > max(product_name_idx, product_code_idx):
+                product_code = str(row[product_code_idx]).strip() if product_code_idx < len(row) else ''
+                product_name = str(row[product_name_idx]).strip() if product_name_idx < len(row) else ''
+                
+                if product_code and product_name:
+                    mapping[product_code] = product_name
+        
+        print(f"✅ 상품명 매핑 데이터 로드 완료: {len(mapping)}개")
+        return mapping
+        
+    except Exception as e:
+        print(f"❌ 상품명 매핑 데이터 로드 실패: {e}")
+        return {}

@@ -405,17 +405,30 @@ def process_tracking_updates(date_prefix=None):
             # 주문번호에서 사이트 구분 (S = 미니학습지, D = 독독독)
             if order_number.startswith('S'):
                 site = "mini"
-                # S 접두사 제거 후 하이픈도 제거
-                clean_order_id = order_number[1:].replace('-', '')
+                # S 접두사 제거
+                order_without_prefix = order_number[1:]
+                # 하이픈이 있는 경우 첫 번째 부분만 사용 (예: 12234-1 → 12234)
+                if '-' in order_without_prefix:
+                    clean_order_id = order_without_prefix.split('-')[0]
+                    print(f"   📝 추가 발송 감지: {order_number} → 기본 주문 {clean_order_id}")
+                else:
+                    clean_order_id = order_without_prefix
+                    
             elif order_number.startswith('D'):
                 site = "dok"
-                # D 접두사 제거 후 하이픈도 제거
-                clean_order_id = order_number[1:].replace('-', '')
+                # D 접두사 제거
+                order_without_prefix = order_number[1:]
+                # 하이픈이 있는 경우 첫 번째 부분만 사용 (예: 12234-1 → 12234)
+                if '-' in order_without_prefix:
+                    clean_order_id = order_without_prefix.split('-')[0]
+                    print(f"   📝 추가 발송 감지: {order_number} → 기본 주문 {clean_order_id}")
+                else:
+                    clean_order_id = order_without_prefix
+                    
             else:
-                # 접두사 없는 경우 하이픈만 제거
-                clean_order_id = order_number.replace('-', '')
-                # 기본적으로 미니학습지로 처리 (필요시 수정)
-                site = "mini"
+                # 접두사 없는 경우는 건너뛰기
+                print(f"⚠️ 접두사 없는 주문번호 건너뛰기: {order_number}")
+                continue
             
             print(f"\n📦 주문 처리: {order_number} → {clean_order_id} ({site})")
             print(f"   송장번호: {tracking_number}")
@@ -453,8 +466,39 @@ def process_tracking_updates(date_prefix=None):
     return total_updated > 0
 
 
+def update_order_status(order_url, update_data, base_url, consumer_key, consumer_secret):
+    """주문 상태만 업데이트하는 헬퍼 함수"""
+    try:
+        if base_url.startswith('https://'):
+            params = {
+                'consumer_key': consumer_key,
+                'consumer_secret': consumer_secret
+            }
+            response = requests.put(
+                order_url,
+                params=params,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(update_data),
+                timeout=15
+            )
+        else:
+            auth = (consumer_key, consumer_secret)
+            response = requests.put(
+                order_url,
+                auth=auth,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(update_data),
+                timeout=15
+            )
+        
+        return response.status_code == 200
+        
+    except Exception as e:
+        print(f"   ❌ 상태 업데이트 오류: {e}")
+        return False
+
 def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS", carrier_name="대한통운", site="mini"):
-    """WooCommerce 주문에 송장번호 업데이트 (상태 변경 포함)"""
+    """WooCommerce 주문에 송장번호 업데이트 (UPSERT 방식으로 추가 발송 지원)"""
     
     # 사이트별 환경변수
     if site == "mini":
@@ -475,10 +519,54 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
     
     order_url = f"{base_url}/wp-json/wc/v3/orders/{order_id}"
     
-    # 현재 날짜
+    # 1단계: 기존 주문 정보 조회 (기존 송장번호 확인)
+    # 기본값으로 새 송장번호 설정
+    final_tracking = tracking_number
+    
+    try:
+        if base_url.startswith('https://'):
+            params = {
+                'consumer_key': consumer_key,
+                'consumer_secret': consumer_secret
+            }
+            get_response = requests.get(order_url, params=params, timeout=15)
+        else:
+            auth = (consumer_key, consumer_secret)
+            get_response = requests.get(order_url, auth=auth, timeout=15)
+        
+        existing_tracking = ""
+        if get_response.status_code == 200:
+            order_data = get_response.json()
+            # 기존 송장번호 확인
+            for meta in order_data.get('meta_data', []):
+                if meta.get('key') == '_msex_sheet_no':
+                    existing_tracking = meta.get('value', '')
+                    break
+            
+            if existing_tracking:
+                print(f"   📋 기존 송장번호 발견: {existing_tracking}")
+                if existing_tracking != tracking_number:
+                    print(f"   🔄 송장번호 교체: {existing_tracking} → {tracking_number}")
+                    # 1단계: 주문상태를 "completed"으로 변경
+                    print(f"   📝 1단계: 주문상태를 completed으로 변경")
+                    temp_update_data = {"status": "completed"}
+                    temp_success = update_order_status(order_url, temp_update_data, base_url, consumer_key, consumer_secret)
+                    if not temp_success:
+                        print(f"   ⚠️ 주문상태 변경 실패 (completed)")
+                else:
+                    print(f"   ⚠️ 동일한 송장번호: {tracking_number}")
+            else:
+                print(f"   📝 새 송장번호 등록: {tracking_number}")
+        else:
+            print(f"   ⚠️ 기존 주문 조회 실패: {get_response.status_code}")
+            
+    except Exception as e:
+        print(f"   ⚠️ 기존 주문 조회 오류: {e}")
+    
+    # 2단계: 송장번호 업데이트
     register_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    # 엠샵 플러그인 메타 키들
+    # 엠샵 플러그인 메타 키들 (UPSERT)
     meta_data = [
         {
             "key": "_msex_dlv_code",
@@ -490,13 +578,16 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
         },
         {
             "key": "_msex_sheet_no",
-            "value": tracking_number
+            "value": final_tracking  # 새 송장번호로 대체
         },
         {
             "key": "_msex_register_date",
             "value": register_date
         }
     ]
+    
+    # 2단계: 송장번호 + 상태를 shipping으로 업데이트
+    print(f"   📝 2단계: 송장번호 등록 + 주문상태를 shipping으로 변경")
     
     update_data = {
         "meta_data": meta_data,

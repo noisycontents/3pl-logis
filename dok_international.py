@@ -55,8 +55,7 @@ def process_dok_international_orders(df):
         print("✅ 독독독: 해외 실물 배송 주문 없음 (디지털/B2B 제외)")
         return
     
-    # 데이터 처리
-    overseas["쇼핑몰상품코드"] = overseas["품번코드"]
+    # 데이터 처리 (쇼핑몰상품코드는 이미 원래 SKU로 설정됨)
     overseas["수령인연락처1"] = overseas["수령인 연락처"]
     overseas["수령인연락처2"] = overseas["수령인 연락처"]
     overseas["송장번호"] = ""
@@ -70,12 +69,12 @@ def process_dok_international_orders(df):
     overseas = process_overseas_addresses(overseas, google_api_key)
     
     # EMS용 표준 컬럼 선택 (배송 메모는 빈 값)
-    overseas["배송 메모"] = ""  # EMS는 배송 메모 비움
+    overseas["배송메세지"] = ""  # EMS는 배송 메모 비움
     
     ems_columns = [
         "주문번호", "상품명", "품번코드", "쇼핑몰상품코드", "수량",
         "수령인명", "수령인연락처1", "수령인연락처2", "우편번호",
-        "배송지주소", "배송 메모", "송장번호", "국가코드"
+        "배송지주소", "배송메세지", "송장번호", "국가코드"
     ]
     overseas_ems = overseas[ems_columns].copy()
     overseas_ems = overseas_ems.sort_values(by="주문번호")

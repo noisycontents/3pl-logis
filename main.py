@@ -13,10 +13,10 @@ from common_utils import (
 )
 from mini_domestic import process_mini_domestic_orders
 from mini_international import process_mini_international_orders
-from mini_status import process_mini_status_changes
+from mini_status import process_mini_reservation_status_change, process_mini_digital_status_change
 from dok_domestic import process_dok_domestic_orders
 from dok_international import process_dok_international_orders
-from dok_status import process_dok_status_changes
+from dok_status import process_dok_reservation_status_change, process_dok_digital_status_change
 from email_sender import collect_shipping_files, send_shipping_files_email
 from happy_together_processor import process_single_order
 
@@ -114,24 +114,30 @@ def process_site_orders(site_name, base_url, consumer_key, consumer_secret, star
     
     # 사이트별 처리
     if site_name == "미니학습지":
-        # 1. 미니학습지 국내 주문서
+        # 1. 미니학습지 예약 상품 상태 변경 (주문서 작성 전)
+        process_mini_reservation_status_change(df)
+        
+        # 2. 미니학습지 국내 주문서
         process_mini_domestic_orders(df)
         
-        # 2. 미니학습지 국외 주문서 (EMS 통합)
+        # 3. 미니학습지 국외 주문서 (EMS 통합)
         process_mini_international_orders(df)
         
-        # 3. 미니학습지 주문상태 변경 (전체)
-        process_mini_status_changes(df)
+        # 4. 미니학습지 디지털 상품 상태 변경
+        process_mini_digital_status_change(df)
         
     elif site_name == "독독독":
-        # 4. 독독독 국내 주문서
+        # 5. 독독독 예약 상품 상태 변경 (주문서 작성 전)
+        process_dok_reservation_status_change(df)
+        
+        # 6. 독독독 국내 주문서
         process_dok_domestic_orders(df)
         
-        # 5. 독독독 국외 주문서 (EMS 통합)
+        # 7. 독독독 국외 주문서 (EMS 통합)
         process_dok_international_orders(df)
         
-        # 6. 독독독 주문상태 변경 (전체)
-        process_dok_status_changes(df)
+        # 8. 독독독 디지털 상품 상태 변경
+        process_dok_digital_status_change(df)
     
     print(f"✅ {site_name} 처리 완료")
 

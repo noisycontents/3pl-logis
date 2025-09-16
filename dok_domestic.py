@@ -31,8 +31,7 @@ def process_dok_domestic_orders(df):
         print("✅ 독독독: B2B 제외 후 국내 주문 없음")
         return
     
-    # 데이터 처리
-    domestic["쇼핑몰상품코드"] = domestic["품번코드"]
+    # 데이터 처리 (쇼핑몰상품코드는 이미 원래 SKU로 설정됨)
     domestic["수령인연락처1"] = domestic["수령인 연락처"]
     domestic["수령인연락처2"] = domestic["수령인 연락처"]
     domestic["송장번호"] = ""
@@ -48,7 +47,7 @@ def process_dok_domestic_orders(df):
     domestic = domestic[[
         "주문번호", "상품명", "품번코드", "쇼핑몰상품코드", "수량",
         "수령인명", "수령인연락처1", "수령인연락처2", "우편번호",
-        "배송지주소", "배송 메모", "송장번호", "국가코드"
+        "배송지주소", "배송메세지", "송장번호", "국가코드"
     ]]
     
     domestic = domestic.sort_values(by="주문번호")
