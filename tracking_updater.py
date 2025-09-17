@@ -48,7 +48,10 @@ def authenticate_google_services():
         
         if private_key:
             # Private Key 줄바꿈 처리 (GitHub Secrets 형식 대응)
-            private_key = private_key.replace('\\n', '\n')
+            # 여러 가지 줄바꿈 형태 처리
+            private_key = private_key.replace('\\n', '\n')  # \\n -> \n
+            private_key = private_key.replace('\\\\n', '\n')  # \\\\n -> \n  
+            
             print(f"   Private Key 길이: {len(private_key)} 문자")
             print(f"   Private Key 시작: {private_key[:30]}...")
             
@@ -57,6 +60,27 @@ def authenticate_google_services():
             has_end = "-----END PRIVATE KEY-----" in private_key
             print(f"   BEGIN 헤더: {'✅' if has_begin else '❌'}")
             print(f"   END 헤더: {'✅' if has_end else '❌'}")
+            
+            # Private Key가 한 줄로 되어있는지 확인
+            lines = private_key.split('\n')
+            print(f"   Private Key 줄 수: {len(lines)}")
+            
+            # 만약 줄바꿈이 제대로 처리되지 않았다면 강제로 처리
+            if len(lines) <= 3:  # 정상적이면 여러 줄이어야 함
+                print("   ⚠️ Private Key 줄바꿈 문제 감지 - 강제 처리 시도")
+                # BEGIN 이후부터 END 이전까지를 64자씩 나누어 줄바꿈 추가
+                if has_begin and has_end:
+                    begin_pos = private_key.find("-----BEGIN PRIVATE KEY-----")
+                    end_pos = private_key.find("-----END PRIVATE KEY-----")
+                    if begin_pos != -1 and end_pos != -1:
+                        header = private_key[begin_pos:begin_pos+27]  # BEGIN 헤더
+                        content = private_key[begin_pos+27:end_pos].replace('\n', '').replace(' ', '')
+                        footer = private_key[end_pos:]  # END 헤더
+                        
+                        # 64자씩 나누어 줄바꿈 추가
+                        formatted_content = '\n'.join([content[i:i+64] for i in range(0, len(content), 64)])
+                        private_key = f"{header}\n{formatted_content}\n{footer}"
+                        print(f"   ✅ Private Key 형식 수정 완료: {len(private_key.split(chr(10)))} 줄")
         
         service_account_info = {
             "type": "service_account",
