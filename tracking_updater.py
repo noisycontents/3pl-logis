@@ -31,9 +31,19 @@ def authenticate_google_services():
     private_key = os.getenv('GOOGLE_PRIVATE_KEY')
     client_email = os.getenv('GOOGLE_CLIENT_EMAIL')
     
-    print(f"   Project ID: {'✅' if project_id else '❌'}")
-    print(f"   Client Email: {'✅' if client_email else '❌'}")
-    print(f"   Private Key: {'✅' if private_key else '❌'}")
+    print(f"   Project ID: {'✅' if project_id else '❌'} ({project_id[:20] if project_id else 'None'}...)")
+    print(f"   Client Email: {'✅' if client_email else '❌'} ({client_email[:30] if client_email else 'None'}...)")
+    print(f"   Private Key: {'✅' if private_key else '❌'} ({'존재' if private_key else 'None'})")
+    
+    # 전체 환경변수 목록에서 GOOGLE_ 시작하는 것들 확인
+    google_env_vars = {k: v for k, v in os.environ.items() if k.startswith('GOOGLE_')}
+    print(f"   🔍 GOOGLE_ 환경변수 개수: {len(google_env_vars)}")
+    for key in sorted(google_env_vars.keys()):
+        value = google_env_vars[key]
+        if 'PRIVATE_KEY' in key:
+            print(f"      {key}: {'✅ 존재' if value else '❌ 없음'}")
+        else:
+            print(f"      {key}: {value[:20] if value else 'None'}...")
     
     if private_key:
         # Private Key 줄바꿈 처리 (GitHub Secrets 형식 대응)
