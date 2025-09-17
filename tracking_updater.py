@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from common_utils import should_skip_today
+from email_sender import send_processing_result_email
 
 load_dotenv()
 
@@ -26,61 +27,14 @@ def authenticate_google_services():
     """Google Drive 및 Sheets API 인증"""
     
     try:
-        # 환경변수 디버깅
-        print("🔍 Google Service Account 환경변수 확인...")
+        # Google Service Account 환경변수 로드
         project_id = os.getenv('GOOGLE_PROJECT_ID')
         private_key = os.getenv('GOOGLE_PRIVATE_KEY')
         client_email = os.getenv('GOOGLE_CLIENT_EMAIL')
         
-        print(f"   Project ID: {'✅' if project_id else '❌'} ({project_id[:20] if project_id else 'None'}...)")
-        print(f"   Client Email: {'✅' if client_email else '❌'} ({client_email[:30] if client_email else 'None'}...)")
-        print(f"   Private Key: {'✅' if private_key else '❌'} ({'존재' if private_key else 'None'})")
-        
-        # 전체 환경변수 목록에서 GOOGLE_ 시작하는 것들 확인
-        google_env_vars = {k: v for k, v in os.environ.items() if k.startswith('GOOGLE_')}
-        print(f"   🔍 GOOGLE_ 환경변수 개수: {len(google_env_vars)}")
-        for key in sorted(google_env_vars.keys()):
-            value = google_env_vars[key]
-            if 'PRIVATE_KEY' in key:
-                print(f"      {key}: {'✅ 존재' if value else '❌ 없음'}")
-            else:
-                print(f"      {key}: {value[:20] if value else 'None'}...")
-        
         if private_key:
             # Private Key 줄바꿈 처리 (GitHub Secrets 형식 대응)
-            # 여러 가지 줄바꿈 형태 처리
-            private_key = private_key.replace('\\n', '\n')  # \\n -> \n
-            private_key = private_key.replace('\\\\n', '\n')  # \\\\n -> \n  
-            
-            print(f"   Private Key 길이: {len(private_key)} 문자")
-            print(f"   Private Key 시작: {private_key[:30]}...")
-            
-            # BEGIN/END 헤더 확인
-            has_begin = "-----BEGIN PRIVATE KEY-----" in private_key
-            has_end = "-----END PRIVATE KEY-----" in private_key
-            print(f"   BEGIN 헤더: {'✅' if has_begin else '❌'}")
-            print(f"   END 헤더: {'✅' if has_end else '❌'}")
-            
-            # Private Key가 한 줄로 되어있는지 확인
-            lines = private_key.split('\n')
-            print(f"   Private Key 줄 수: {len(lines)}")
-            
-            # 만약 줄바꿈이 제대로 처리되지 않았다면 강제로 처리
-            if len(lines) <= 3:  # 정상적이면 여러 줄이어야 함
-                print("   ⚠️ Private Key 줄바꿈 문제 감지 - 강제 처리 시도")
-                # BEGIN 이후부터 END 이전까지를 64자씩 나누어 줄바꿈 추가
-                if has_begin and has_end:
-                    begin_pos = private_key.find("-----BEGIN PRIVATE KEY-----")
-                    end_pos = private_key.find("-----END PRIVATE KEY-----")
-                    if begin_pos != -1 and end_pos != -1:
-                        header = private_key[begin_pos:begin_pos+27]  # BEGIN 헤더
-                        content = private_key[begin_pos+27:end_pos].replace('\n', '').replace(' ', '')
-                        footer = private_key[end_pos:]  # END 헤더
-                        
-                        # 64자씩 나누어 줄바꿈 추가
-                        formatted_content = '\n'.join([content[i:i+64] for i in range(0, len(content), 64)])
-                        private_key = f"{header}\n{formatted_content}\n{footer}"
-                        print(f"   ✅ Private Key 형식 수정 완료: {len(private_key.split(chr(10)))} 줄")
+            private_key = private_key.replace('\\n', '\n').replace('\\\\n', '\n')
         
         service_account_info = {
             "type": "service_account",
@@ -101,16 +55,10 @@ def authenticate_google_services():
         
         if missing_fields:
             print(f"❌ Google Service Account 정보 누락: {missing_fields}")
-            for field in missing_fields:
-                env_var = f"GOOGLE_{field.upper()}"
-                print(f"   {env_var}: {os.getenv(env_var, 'NOT_SET')}")
             return None, None
     
     except Exception as e:
-        print(f"❌ 환경변수 처리 중 오류 발생: {e}")
-        print(f"❌ 오류 타입: {type(e).__name__}")
-        import traceback
-        print(f"❌ 상세 오류:\n{traceback.format_exc()}")
+        print(f"❌ Google API 환경변수 처리 실패: {e}")
         return None, None
     
     try:
@@ -164,7 +112,8 @@ def find_today_tracking_sheets(drive_service, folder_id, shared_drive_id, date_p
             
             if ('spreadsheet' in mime_type and 
                 file_name.startswith(date_prefix) and 
-                not file_name.lower().endswith('b2b')):
+                not file_name.lower().endswith('b2b') and
+                not file_name.endswith('본사')):
                 
                 tracking_sheets.append(file)
                 print(f"🎯 송장 시트 발견: {file_name}")
@@ -172,6 +121,8 @@ def find_today_tracking_sheets(drive_service, folder_id, shared_drive_id, date_p
                 print(f"   수정일: {file['modifiedTime']}")
             elif file_name.lower().endswith('b2b'):
                 print(f"⚠️ B2B 파일 제외: {file_name}")
+            elif file_name.endswith('본사'):
+                print(f"⚠️ 본사 파일 제외: {file_name}")
         
         return tracking_sheets
         
@@ -359,6 +310,12 @@ def process_tracking_updates(date_prefix=None):
     print("=== 물류창고 송장번호 업데이트 시스템 ===")
     print(f"🎯 처리 날짜: {date_prefix}")
     
+    # 결과 수집 변수
+    total_updated = 0
+    total_failed = 0
+    processed_sheets = 0
+    errors = []
+    
     # 공휴일/주말 체크
     if should_skip_today():
         print("\n🚫 오늘은 작업을 건너뜁니다. (물류창고 휴무)")
@@ -392,10 +349,8 @@ def process_tracking_updates(date_prefix=None):
     print(f"✅ {len(tracking_sheets)}개 송장 시트 발견")
     
     # 3단계: 각 시트 처리
-    total_updated = 0
-    total_failed = 0
-    
     for sheet_info in tracking_sheets:
+        processed_sheets += 1
         sheet_name = sheet_info['name']
         sheet_id = sheet_info['id']
         
@@ -405,7 +360,9 @@ def process_tracking_updates(date_prefix=None):
         df = download_tracking_data(sheets_service, sheet_id)
         
         if df is None:
-            print(f"❌ {sheet_name} 데이터 다운로드 실패")
+            error_msg = f"{sheet_name} 데이터 다운로드 실패"
+            print(f"❌ {error_msg}")
+            errors.append(error_msg)
             continue
         
         # EMS 해외 시트의 경우 컬럼 매핑 필요
@@ -529,6 +486,34 @@ def process_tracking_updates(date_prefix=None):
     print(f"\n🎉 송장번호 업데이트 완료!")
     print(f"✅ 성공: {total_updated}개")
     print(f"❌ 실패: {total_failed}개")
+    
+    # 처리 결과 이메일 발송
+    print(f"\n📧 송장 업데이트 결과 이메일 발송...")
+    
+    # 결과 요약 생성
+    result_summary = f"""=== 송장번호 업데이트 결과 ({date_prefix}) ===
+
+📊 처리 결과:
+   📦 처리된 시트: {processed_sheets}개
+   ✅ 송장 업데이트 성공: {total_updated}건
+   ❌ 송장 업데이트 실패: {total_failed}건
+
+📈 성공률: {(total_updated/(total_updated+total_failed)*100):.1f}%" if (total_updated + total_failed) > 0 else "📈 성공률: 0%"""
+
+    if errors:
+        result_summary += "\n\n❌ 발생한 오류:"
+        for error in errors:
+            result_summary += f"\n   • {error}"
+    
+    if total_failed == 0 and not errors:
+        result_summary += "\n\n✅ 모든 송장번호 업데이트가 성공적으로 완료되었습니다."
+    
+    # 결과 이메일 발송
+    email_success = send_processing_result_email(result_summary)
+    if email_success:
+        print("✅ 송장 업데이트 결과 이메일 발송 완료!")
+    else:
+        print("❌ 송장 업데이트 결과 이메일 발송 실패")
     
     return total_updated > 0
 

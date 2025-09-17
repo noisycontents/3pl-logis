@@ -9,15 +9,16 @@ from common_utils import (
     get_woocommerce_auth, 
     fetch_orders_from_wp, 
     convert_orders_to_dataframe,
-    should_skip_today
+    should_skip_today,
+    processing_results
 )
 from mini_domestic import process_mini_domestic_orders
 from mini_international import process_mini_international_orders
-from mini_status import process_mini_reservation_status_change, process_mini_digital_status_change
+from mini_status import process_mini_reservation_status_change, process_mini_digital_status_change, process_mini_b2b_status_change
 from dok_domestic import process_dok_domestic_orders
 from dok_international import process_dok_international_orders
-from dok_status import process_dok_reservation_status_change, process_dok_digital_status_change
-from email_sender import collect_shipping_files, send_shipping_files_email
+from dok_status import process_dok_reservation_status_change, process_dok_digital_status_change, process_dok_b2b_status_change
+from email_sender import collect_shipping_files, send_shipping_files_email, send_processing_result_email
 from happy_together_processor import process_single_order
 
 # .env 파일 로드
@@ -117,27 +118,39 @@ def process_site_orders(site_name, base_url, consumer_key, consumer_secret, star
         # 1. 미니학습지 예약 상품 상태 변경 (주문서 작성 전)
         process_mini_reservation_status_change(df)
         
-        # 2. 미니학습지 국내 주문서
-        process_mini_domestic_orders(df)
+        # 예약 상품 제외한 DataFrame 생성 (상태 변경된 주문 제외)
+        shipping_df = df[~df["SKU"].str.contains("[예약상품]", na=False)].copy()
         
-        # 3. 미니학습지 국외 주문서 (EMS 통합)
-        process_mini_international_orders(df)
+        # 2. 미니학습지 국내 주문서 (예약 제외)
+        process_mini_domestic_orders(shipping_df)
+        
+        # 3. 미니학습지 국외 주문서 (EMS 통합, 예약 제외)
+        process_mini_international_orders(shipping_df)
         
         # 4. 미니학습지 디지털 상품 상태 변경
         process_mini_digital_status_change(df)
         
+        # 5. 미니학습지 B2B 상품 상태 변경
+        process_mini_b2b_status_change(df)
+        
     elif site_name == "독독독":
-        # 5. 독독독 예약 상품 상태 변경 (주문서 작성 전)
+        # 6. 독독독 예약 상품 상태 변경 (주문서 작성 전)
         process_dok_reservation_status_change(df)
         
-        # 6. 독독독 국내 주문서
-        process_dok_domestic_orders(df)
+        # 예약 상품 제외한 DataFrame 생성 (상태 변경된 주문 제외)
+        shipping_df = df[~df["SKU"].str.contains("[예약상품]", na=False)].copy()
         
-        # 7. 독독독 국외 주문서 (EMS 통합)
-        process_dok_international_orders(df)
+        # 7. 독독독 국내 주문서 (예약 제외)
+        process_dok_domestic_orders(shipping_df)
         
-        # 8. 독독독 디지털 상품 상태 변경
+        # 8. 독독독 국외 주문서 (EMS 통합, 예약 제외)
+        process_dok_international_orders(shipping_df)
+        
+        # 9. 독독독 디지털 상품 상태 변경
         process_dok_digital_status_change(df)
+        
+        # 10. 독독독 B2B 상품 상태 변경
+        process_dok_b2b_status_change(df)
     
     print(f"✅ {site_name} 처리 완료")
 
@@ -207,6 +220,18 @@ def main():
                 print("❌ 이메일 발송 실패")
     else:
         print("⚠️ 발송할 배송 주문서가 없습니다.")
+        processing_results.add_warning("발송할 배송 주문서가 없습니다")
+    
+    # 처리 결과 요약 이메일 발송
+    print("\n📧 처리 결과 요약 이메일 발송...")
+    result_summary = processing_results.get_summary()
+    print(result_summary)  # 콘솔에도 출력
+    
+    result_email_success = send_processing_result_email(result_summary)
+    if result_email_success:
+        print("✅ 처리 결과 이메일 발송 완료!")
+    else:
+        print("❌ 처리 결과 이메일 발송 실패")
     
     print("\n=== 전체 처리 완료 ===")
 

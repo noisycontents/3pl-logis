@@ -158,6 +158,70 @@ def collect_shipping_files():
     
     return existing_files
 
+def send_processing_result_email(result_summary):
+    """3PL 처리 결과를 이메일로 발송 (별도 수신자)"""
+    
+    # 처리 결과 전용 수신자 이메일 설정
+    recipient_email = os.getenv('LOGIS_EMAIL_RECIPIENT')
+    if not recipient_email:
+        print("❌ LOGIS_EMAIL_RECIPIENT 환경변수가 설정되지 않았습니다.")
+        print("💡 처리 결과 이메일은 물류 담당자용 별도 주소입니다.")
+        return False
+    
+    # 이메일 설정 (환경변수에서 가져오기)
+    smtp_server = os.getenv('SMTP_SERVER')
+    smtp_port_str = os.getenv('SMTP_PORT')
+    sender_email = os.getenv('SMTP_USERNAME')
+    sender_password = os.getenv('SMTP_PASSWORD')
+    
+    if not all([smtp_server, smtp_port_str, sender_email, sender_password]):
+        print("❌ 이메일 발송 설정이 없습니다.")
+        return False
+    
+    try:
+        smtp_port = int(smtp_port_str)
+    except ValueError:
+        print("❌ SMTP_PORT는 숫자여야 합니다.")
+        return False
+    
+    try:
+        # 이메일 메시지 생성
+        today_str = datetime.today().strftime('%y%m%d')
+        
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+        msg['Subject'] = f"[3PL] {today_str} 처리 결과 보고"
+        
+        # 메일 본문 (처리 결과 요약)
+        body = f"""3PL 자동화 시스템 처리 결과를 보고드립니다.
+
+{result_summary}
+
+발송 일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+처리 시스템: 3PL 자동화 시스템 (GitHub Actions)
+"""
+        
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # SMTP 서버 연결 및 발송
+        print(f"📧 처리 결과 이메일 발송 중... ({recipient_email})")
+        
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        
+        text = msg.as_string()
+        server.sendmail(sender_email, recipient_email, text)
+        server.quit()
+        
+        print(f"✅ 처리 결과 이메일 발송 완료!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 처리 결과 이메일 발송 실패: {e}")
+        return False
+
 if __name__ == "__main__":
     print("=== 배송 주문서 이메일 발송 ===")
     

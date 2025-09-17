@@ -7,7 +7,7 @@ import os
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from common_utils import DOWNLOAD_DIR
+from common_utils import DOWNLOAD_DIR, update_orders_batch
 
 load_dotenv()
 
@@ -95,24 +95,32 @@ def process_mini_reservation_status_change(df):
     print("--- 미니학습지 예약 상품 상태 변경 시작 ---")
     
     # 예약 상품만 필터링
-    reservation_mask = df["SKU"].str.contains("예약", na=False)
+    reservation_mask = df["SKU"].str.contains("[예약상품]", na=False)
     reservation_df = df[reservation_mask].copy()
     
     if reservation_df.empty:
         print("✅ 미니학습지: 예약 상품 없음")
         return []
     
-    # 예약 상품 상태 변경
+    # 예약 상품 상태 변경 (배치 처리)
     print("🔄 미니학습지 예약 상품 WooCommerce 상태 변경 중...")
     
-    updated_count = 0
-    for _, row in reservation_df.iterrows():
-        order_id = row["주문번호"]
-        success = update_order_status_in_woocommerce(order_id, "processing")
-        if success:
-            updated_count += 1
+    # 환경변수 가져오기
+    base_url = os.getenv('WP_BASE_URL')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
-    print(f"✅ 미니학습지 {updated_count}개 주문 상태 변경 완료")
+    if not all([base_url, consumer_key, consumer_secret]):
+        print("❌ 미니학습지 WooCommerce API 환경변수가 설정되지 않았습니다")
+        return []
+    
+    # 주문 ID 목록 추출
+    order_ids = reservation_df["주문번호"].tolist()
+    
+    # 배치 업데이트 실행
+    updated_count = update_orders_batch(order_ids, "processing", base_url, consumer_key, consumer_secret)
+    
+    print(f"✅ 미니학습지 예약 상품 {updated_count}개 주문 상태 변경 완료")
     
     # CSV 파일 생성
     today_str = datetime.today().strftime('%y%m%d')
@@ -136,20 +144,70 @@ def process_mini_digital_status_change(df):
         print("✅ 미니학습지: 디지털 상품 없음")
         return []
     
-    # 디지털 상품 상태 변경
+    # 디지털 상품 상태 변경 (배치 처리)
     print("🔄 미니학습지 디지털 상품 WooCommerce 상태 변경 중...")
     
-    updated_count = 0
-    for _, row in digital_df.iterrows():
-        order_id = row["주문번호"]
-        success = update_order_status_in_woocommerce(order_id, "shipped")
-        if success:
-            updated_count += 1
+    # 환경변수 가져오기
+    base_url = os.getenv('WP_BASE_URL')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
-    print(f"✅ 미니학습지 {updated_count}개 주문 상태 변경 완료")
+    if not all([base_url, consumer_key, consumer_secret]):
+        print("❌ 미니학습지 WooCommerce API 환경변수가 설정되지 않았습니다")
+        return []
+    
+    # 주문 ID 목록 추출
+    order_ids = digital_df["주문번호"].tolist()
+    
+    # 배치 업데이트 실행
+    updated_count = update_orders_batch(order_ids, "shipped", base_url, consumer_key, consumer_secret)
+    
+    print(f"✅ 미니학습지 디지털 상품 {updated_count}개 주문 상태 변경 완료")
     
     # CSV 파일 생성
     csv_path = create_csv_for_condition(digital_df, "디지털 상품 (배송완료)", "shipped", "배송완료")
+    
+    return [csv_path] if csv_path else []
+
+def process_mini_b2b_status_change(df):
+    """미니학습지 B2B 상품 상태 변경"""
+    if df.empty:
+        print("✅ 미니학습지: B2B 상품 없음")
+        return []
+    
+    print("--- 미니학습지 B2B 상품 (배송완료) 상품 처리 시작 ---")
+    
+    # B2B 상품만 필터링
+    b2b_mask = df["SKU"].str.contains("[B2B]", na=False)
+    b2b_df = df[b2b_mask].copy()
+    
+    if b2b_df.empty:
+        print("✅ 미니학습지: B2B 상품 없음")
+        return []
+    
+    # B2B 상품 상태 변경 (배치 처리)
+    print("🔄 미니학습지 B2B 상품 WooCommerce 상태 변경 중...")
+    
+    # 환경변수 가져오기
+    base_url = os.getenv('WP_BASE_URL')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
+    
+    if not all([base_url, consumer_key, consumer_secret]):
+        print("❌ 미니학습지 WooCommerce API 환경변수가 설정되지 않았습니다")
+        return []
+    
+    # 주문 ID 목록 추출
+    order_ids = b2b_df["주문번호"].tolist()
+    
+    # 배치 업데이트 실행
+    updated_count = update_orders_batch(order_ids, "shipped", base_url, consumer_key, consumer_secret)
+    
+    print(f"✅ 미니학습지 B2B 상품 {updated_count}개 주문 상태 변경 완료")
+    
+    # CSV 파일 생성
+    today_str = datetime.today().strftime('%y%m%d')
+    csv_path = create_csv_for_condition(b2b_df, "B2B 상품 (배송완료)", "shipped", f"{today_str}_B2B_배송완료")
     
     return [csv_path] if csv_path else []
 
@@ -170,7 +228,7 @@ def process_mini_status_changes(df):
             "description": "디지털 상품 (배송완료)"
         },
         "예약": {
-            "mask": df["SKU"].str.contains("예약", na=False),
+            "mask": df["SKU"].str.contains("[예약상품]", na=False),
             "status": "processing", 
             "filename": "처리중",
             "description": "예약 상품 (처리중)"
@@ -199,15 +257,15 @@ def process_mini_status_changes(df):
                 # 해당 주문의 모든 SKU 확인
                 has_digital = order_items["SKU"].str.endswith("[디지털]", na=False).any()
                 has_physical = (~order_items["SKU"].str.endswith("[디지털]", na=False) & 
-                              ~order_items["SKU"].str.contains("예약", na=False) &
-                              ~order_items["SKU"].str.contains("B2B", na=False)).any()
+                              ~order_items["SKU"].str.contains("[예약상품]", na=False) &
+                              ~order_items["SKU"].str.contains("[B2B]", na=False)).any()
                 
                 # 디지털만 있는 주문 (실물 없음) 또는 예약만 있는 주문만 처리
                 if condition_name == "디지털" and has_digital and not has_physical:
                     pure_orders.append(order_num)
                 elif condition_name == "예약" and not has_digital and not has_physical:
                     # 예약 상품만 있는 주문
-                    has_reservation = order_items["SKU"].str.contains("예약", na=False).any()
+                    has_reservation = order_items["SKU"].str.contains("[예약상품]", na=False).any()
                     if has_reservation:
                         pure_orders.append(order_num)
             

@@ -1,10 +1,10 @@
 name: 3PL Tracking Automation
 
 on:
-  # schedule:
-  #   # 월~금요일 KST 15:05 (오후 3시 5분)에 실행
-  #   # UTC 기준: KST는 UTC+9이므로 06:05
-  #   - cron: '5 6 * * 1-5'
+  schedule:
+    # 월~금요일 KST 15:05 (오후 3시 5분)에 실행
+    # UTC 기준: KST는 UTC+9이므로 06:05
+    - cron: '5 6 * * 1-5'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
@@ -54,6 +54,13 @@ jobs:
         GOOGLE_CLIENT_X509_CERT_URL: ${{ secrets.GOOGLE_CLIENT_X509_CERT_URL }}
         GOOGLE_SHARED_DRIVE_ID: ${{ secrets.GOOGLE_SHARED_DRIVE_ID }}
         GOOGLE_FOLDER_ID: ${{ secrets.GOOGLE_FOLDER_ID }}
+        
+        # 이메일 설정 (결과 보고용)
+        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        LOGIS_EMAIL_RECIPIENT: ${{ secrets.LOGIS_EMAIL_RECIPIENT }}
         
       run: |
         echo "📦 3PL Tracking Updater 시작 - $(date '+%Y-%m-%d %H:%M:%S KST')"

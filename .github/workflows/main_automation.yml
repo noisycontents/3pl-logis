@@ -1,10 +1,10 @@
 name: 3PL Main Automation
 
 on:
-  # schedule:
-  #   # 월~금요일 KST 12:05 (정오 지난 5분)에 실행
-  #   # UTC 기준: KST는 UTC+9이므로 03:05
-  #   - cron: '5 3 * * 1-5'
+  schedule:
+    # 월~금요일 KST 12:05 (정오 지난 5분)에 실행
+    # UTC 기준: KST는 UTC+9이므로 03:05
+    - cron: '5 3 * * 1-5'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
@@ -64,6 +64,7 @@ jobs:
         SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
         SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        LOGIS_EMAIL_RECIPIENT: ${{ secrets.LOGIS_EMAIL_RECIPIENT }}
         HAPPY_TOGETHER_PRODUCT_ID: ${{ secrets.HAPPY_TOGETHER_PRODUCT_ID }}
         
       run: |

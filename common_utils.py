@@ -54,7 +54,7 @@ def get_fallback_holidays(year):
             "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30",
             "2025-03-01", "2025-05-01", "2025-05-05", "2025-05-06",
             "2025-06-03", "2025-06-06", "2025-08-15",
-            "2025-10-01", "2025-10-02", "2025-10-03",
+            "2025-10-03",
             "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09", "2025-12-25"
         }
     else:
@@ -104,7 +104,13 @@ def should_skip_today():
     if is_weekend:
         print(f"🏖️ 오늘은 주말입니다.")
     
-    should_skip = is_holiday_today or is_weekend
+    # 특정 휴무일 확인
+    is_custom_holiday_today = is_custom_holiday(today_kst)
+    
+    if is_custom_holiday_today:
+        print(f"🚫 오늘은 지정된 휴무일입니다.")
+    
+    should_skip = is_holiday_today or is_weekend or is_custom_holiday_today
     
     if should_skip:
         skip_reason = []
@@ -112,6 +118,8 @@ def should_skip_today():
             skip_reason.append("공휴일")
         if is_weekend:
             skip_reason.append("주말")
+        if is_custom_holiday_today:
+            skip_reason.append("지정휴무일")
         
         print(f"⏭️ 작업 건너뛰기: {', '.join(skip_reason)}")
         return True
@@ -119,45 +127,98 @@ def should_skip_today():
         print(f"✅ 작업 진행 가능: 평일")
         return False
 
+def is_custom_holiday(date_obj):
+    """특정 휴무일인지 확인 (코드 내 지정)"""
+    
+    # 코드 내 특정 휴무일 지정 (YYYY-MM-DD 형식)
+    CUSTOM_HOLIDAYS = [
+        "2025-10-02",  # 추석 전 배송 안 함
+        # 예시: "2025-01-01",  # 신정  
+        # 예시: "2025-08-15",  # 임시 휴무
+        # 필요시 여기에 날짜 추가
+    ]
+    
+    date_str = date_obj.strftime('%Y-%m-%d')
+    is_custom = date_str in CUSTOM_HOLIDAYS
+    
+    if is_custom:
+        print(f"🔍 특정 휴무일 감지: {date_str}")
+    
+    return is_custom
+
+def find_last_work_day(current_date):
+    """마지막 작업일 찾기 (연속 휴무일 역추적)"""
+    
+    check_date = current_date - timedelta(days=1)  # 어제부터 시작
+    days_checked = 0
+    
+    while days_checked < 14:  # 최대 2주까지만 역추적 (무한루프 방지)
+        # 주말인지 확인
+        if check_date.weekday() >= 5:
+            check_date -= timedelta(days=1)
+            days_checked += 1
+            continue
+        
+        # 공휴일인지 확인
+        if is_holiday(check_date):
+            check_date -= timedelta(days=1)
+            days_checked += 1
+            continue
+        
+        # 특정 휴무일인지 확인
+        if is_custom_holiday(check_date):
+            check_date -= timedelta(days=1)
+            days_checked += 1
+            continue
+        
+        # 작업일 발견
+        return check_date
+    
+    # 최대 역추적 한계에 도달한 경우 기본값 반환
+    return current_date - timedelta(days=1)
+
 def get_date_range():
-    """주문 조회 날짜 범위 계산 (월요일 특별 처리)"""
+    """주문 조회 날짜 범위 계산 (연속 휴무일 고려)"""
     # KST(한국 표준시) = UTC+9
     kst_offset = timezone(timedelta(hours=9))
-    now_kst = datetime.now(kst_offset)
-    today_kst = now_kst.date()
+    today_kst = datetime.now(kst_offset)
     
-    # 오늘이 월요일인지 확인 (weekday(): 월=0, 화=1, ..., 일=6)
-    is_monday = today_kst.weekday() == 0
+    print(f"📅 오늘 날짜: {today_kst.strftime('%Y-%m-%d')} ({['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'][today_kst.weekday()]})")
     
-    if is_monday:
-        # 월요일: 지난주 금요일 12시부터 당일 월요일 12시까지
-        # 금요일은 3일 전 (월요일 기준)
-        last_friday = today_kst - timedelta(days=3)
+    # 마지막 작업일 찾기 (연속 휴무일 역추적)
+    last_work_day = find_last_work_day(today_kst)
+    
+    print(f"📅 마지막 작업일: {last_work_day.strftime('%Y-%m-%d')} ({['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'][last_work_day.weekday()]})")
+    
+    # 연속 휴무일 계산
+    days_gap = (today_kst.date() - last_work_day.date()).days
+    
+    if days_gap > 1:
+        print(f"🔍 연속 휴무: {days_gap}일간 휴무 감지")
+        print(f"📈 확장 처리: {last_work_day.strftime('%Y-%m-%d')} 12시 ~ {today_kst.strftime('%Y-%m-%d')} 12시")
         
-        start_date = datetime.combine(last_friday, datetime.min.time().replace(hour=12))
-        start_date = start_date.replace(tzinfo=kst_offset)
+        # 확장된 범위: 마지막 작업일 12시 ~ 오늘 12시
+        start_date = last_work_day.replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=kst_offset)
+        end_date = today_kst.replace(hour=12, minute=0, second=0, microsecond=0)
         
-        end_date = datetime.combine(today_kst, datetime.min.time().replace(hour=12))
-        end_date = end_date.replace(tzinfo=kst_offset)
+        print(f"📅 확장 조회 기간: {start_date} ~ {end_date}")
+        print(f"📅 처리 기간: {days_gap}일 + {(end_date - start_date).seconds // 3600}시간")
         
-        print(f"📅 월요일 특별 처리: 지난주 금요일 ~ 당일 월요일")
-        print(f"📅 주문 조회 시간 (KST): {start_date.strftime('%Y-%m-%d %H:%M %z')} ~ {end_date.strftime('%Y-%m-%d %H:%M %z')}")
-        print(f"📅 처리 기간: {(end_date - start_date).days}일 + {(end_date - start_date).seconds // 3600}시간")
-        
+        return start_date, end_date
     else:
-        # 화~금요일: 전날 12시부터 당일 12시까지 (기존 로직)
-        start_date = datetime.combine(today_kst - timedelta(days=1), datetime.min.time().replace(hour=12))
-        start_date = start_date.replace(tzinfo=kst_offset)
+        # 일반 처리 (1일 차이)
+        print("📅 일반 처리: 전날 ~ 당일")
         
-        end_date = datetime.combine(today_kst, datetime.min.time().replace(hour=12))
-        end_date = end_date.replace(tzinfo=kst_offset)
+        yesterday = today_kst.date() - timedelta(days=1)
+        start_date = datetime.combine(yesterday, datetime.min.time()).replace(hour=12, tzinfo=kst_offset)
+        end_date = today_kst.replace(hour=12, minute=0, second=0, microsecond=0)
         
         weekday_name = ['월', '화', '수', '목', '금', '토', '일'][today_kst.weekday()]
         print(f"📅 {weekday_name}요일 일반 처리: 전날 ~ 당일")
         print(f"📅 주문 조회 시간 (KST): {start_date.strftime('%Y-%m-%d %H:%M %z')} ~ {end_date.strftime('%Y-%m-%d %H:%M %z')}")
         print(f"📅 처리 기간: 24시간")
-    
-    return start_date, end_date
+        
+        return start_date, end_date
 
 def get_woocommerce_auth(base_url, consumer_key, consumer_secret):
     """WooCommerce Consumer Key/Secret 인증 설정 및 테스트"""
@@ -295,16 +356,22 @@ def convert_orders_to_dataframe(orders, site_label):
         line_items = order.get('line_items', [])
         
         for item in line_items:
-            # SKU에서 하이픈 이하 정보 제거 (관리자용 정보 삭제)
+            # SKU 처리 (원본 보존 + 매핑용 정리)
             raw_sku = item.get('sku', '')
-            clean_sku = raw_sku.split('-')[0] if raw_sku else ''  # 하이픈 이하 삭제
+            
+            # 1. 하이픈 이하 제거 (상태 판별용 - 디지털/B2B/예약상품 정보 보존)
+            sku_for_status = raw_sku.split('-')[0] if raw_sku else ''
+            
+            # 2. 상품명 매핑용 clean_sku (대괄호까지 제거)
+            import re
+            clean_sku = re.sub(r'\[.*?\]', '', sku_for_status).strip()
             
             # Google Sheets에서 매핑된 상품명 가져오기 (없으면 원래 상품명 사용)
             original_product_name = item.get('name', '')
             mapped_product_name = product_mapping.get(clean_sku, original_product_name)
             
-            # 매핑 결과 로그 (처음 몇 개만)
-            if len(order_items) < 3:  # 처음 3개만 로그 출력
+            # 매핑 결과 간단 로그 (처음 3개만)
+            if len(order_items) < 3:
                 if mapped_product_name != original_product_name:
                     print(f"   📋 상품명 매핑: {clean_sku} → {mapped_product_name}")
                 else:
@@ -313,15 +380,15 @@ def convert_orders_to_dataframe(orders, site_label):
             order_items.append({
                 '주문번호': str(order_id),
                 '주문상태': '완료됨' if order_status == 'completed' else order_status,
-                'SKU': clean_sku,
+                'SKU': sku_for_status,  # 상태 판별용 SKU (디지털/B2B/예약상품 정보 보존)
                 '상품명': mapped_product_name,  # 매핑된 상품명 사용
-                '품번코드': clean_sku,  # 하이픈 제거된 SKU (기존 방식)
+                '품번코드': clean_sku,  # 매핑용 clean SKU (대괄호 제거)
                 '쇼핑몰상품코드': raw_sku,  # 원래 SKU 값 (하이픈 포함)
                 '수량': str(item.get('quantity', 1)),
                 '수령인명': (shipping.get('first_name', '') + ' ' + shipping.get('last_name', '')).strip(),
                 '수령인 연락처': billing.get('phone', ''),
                 '우편번호': shipping.get('postcode', ''),
-                '배송지주소': f"{shipping.get('address_1', '')} {shipping.get('address_2', '')} {shipping.get('city', '')} {shipping.get('state', '')} {shipping.get('country', '')}".strip(),
+                '배송지주소': build_clean_address(shipping),
                 '배송메세지': customer_note
             })
     
@@ -376,6 +443,67 @@ def is_pure_digital_product(sku):
     
     # 단일 상품이거나 실물 구성요소가 적으면 순수 디지털
     return True
+
+def build_clean_address(shipping):
+    """WooCommerce 배송 정보에서 중복 없는 깔끔한 주소 생성"""
+    if not shipping:
+        return ""
+    
+    # 각 필드 추출
+    address_1 = shipping.get('address_1', '').strip()
+    address_2 = shipping.get('address_2', '').strip()
+    city = shipping.get('city', '').strip()
+    state = shipping.get('state', '').strip()
+    country = shipping.get('country', '').strip()
+    
+    # 주소 구성요소들 수집
+    address_parts = []
+    
+    # 1. 기본 주소 (address_1)
+    if address_1:
+        address_parts.append(address_1)
+    
+    # 2. 상세 주소 (address_2)
+    if address_2:
+        address_parts.append(address_2)
+    
+    # 3. 지역 정보 중복 제거 처리
+    region_parts = []
+    
+    # state가 가장 큰 단위 (예: 경기도)
+    if state and state not in region_parts:
+        region_parts.append(state)
+    
+    # city가 state와 다르고, state에 포함되지 않으면 추가
+    if city and city != state and city not in region_parts:
+        # city가 state의 일부가 아닌 경우만 추가
+        if not (state and city in state):
+            region_parts.append(city)
+    
+    # country는 한국 관련이 아니고, 이미 추가된 지역과 다른 경우만 추가
+    if (country and 
+        country.upper() not in ['KR', 'KOREA', 'SOUTH KOREA', '대한민국', '한국'] and
+        country != state and country != city):
+        region_parts.append(country)
+    
+    # 주소 구성 (한국 vs 해외 구분)
+    is_korean = (state and any(keyword in state for keyword in ['도', '시', '특별시', '광역시']) or
+                 country and country.upper() in ['KR', 'KOREA', 'SOUTH KOREA', '대한민국', '한국'])
+    
+    if is_korean:
+        # 한국 주소: 큰 단위 → 작은 단위 (시도 → 시군구 → 상세주소)
+        final_parts = region_parts + address_parts
+    else:
+        # 해외 주소: 작은 단위 → 큰 단위 (상세주소 → 시 → 주/도 → 국가)
+        final_parts = address_parts + region_parts
+    
+    # 최종 주소 생성
+    full_address = ' '.join(final_parts).strip()
+    
+    # 연속된 공백 정리
+    full_address = re.sub(r'\s+', ' ', full_address)
+    
+    return full_address
 
 def clean_korean_address(addr):
     """한국 주소에서 불필요한 'KR' 제거"""
@@ -510,3 +638,178 @@ def get_product_name_mapping():
     except Exception as e:
         print(f"❌ 상품명 매핑 데이터 로드 실패: {e}")
         return {}
+
+def update_orders_batch(order_ids, status, base_url, consumer_key, consumer_secret):
+    """여러 주문 상태 배치 업데이트 (20개씩 안전하게 처리)"""
+    import requests
+    import json
+    import time
+    
+    if not order_ids:
+        return 0
+    
+    print(f"🔄 배치 업데이트 시작: {len(order_ids)}개 주문 → {status} 상태")
+    
+    # 20개씩 나누어 처리 (API 안정성)
+    batch_size = 20
+    total_updated = 0
+    total_failed = 0
+    
+    for i in range(0, len(order_ids), batch_size):
+        batch = order_ids[i:i+batch_size]
+        batch_num = (i // batch_size) + 1
+        total_batches = (len(order_ids) + batch_size - 1) // batch_size
+        
+        print(f"   📦 배치 {batch_num}/{total_batches}: {len(batch)}개 주문 처리 중...")
+        
+        # 배치 업데이트 데이터 구성
+        batch_data = {
+            "update": [
+                {"id": int(order_id), "status": status} 
+                for order_id in batch
+            ]
+        }
+        
+        try:
+            # WooCommerce 배치 API 호출
+            batch_url = f"{base_url}/wp-json/wc/v3/orders/batch"
+            
+            if base_url.startswith('https://'):
+                params = {
+                    'consumer_key': consumer_key,
+                    'consumer_secret': consumer_secret
+                }
+                response = requests.post(
+                    batch_url,
+                    params=params,
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(batch_data),
+                    timeout=30
+                )
+            else:
+                auth = (consumer_key, consumer_secret)
+                response = requests.post(
+                    batch_url,
+                    auth=auth,
+                    headers={'Content-Type': 'application/json'},
+                    data=json.dumps(batch_data),
+                    timeout=30
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                updated_orders = result.get('update', [])
+                
+                success_count = 0
+                for updated_order in updated_orders:
+                    if updated_order.get('id'):
+                        success_count += 1
+                
+                total_updated += success_count
+                failed_count = len(batch) - success_count
+                total_failed += failed_count
+                
+                print(f"   ✅ 배치 {batch_num} 완료: {success_count}개 성공, {failed_count}개 실패")
+                
+            else:
+                print(f"   ❌ 배치 {batch_num} API 오류: {response.status_code}")
+                print(f"   ❌ 응답: {response.text[:200]}")
+                total_failed += len(batch)
+                
+        except Exception as e:
+            print(f"   ❌ 배치 {batch_num} 처리 오류: {e}")
+            total_failed += len(batch)
+        
+        # 배치 간 잠시 대기 (API 제한 방지)
+        if i + batch_size < len(order_ids):
+            time.sleep(0.5)
+    
+    print(f"🎉 배치 업데이트 완료: {total_updated}개 성공, {total_failed}개 실패")
+    return total_updated
+
+class ProcessingResults:
+    """3PL 처리 결과 수집 클래스"""
+    
+    def __init__(self):
+        self.reset()
+    
+    def reset(self):
+        """결과 초기화"""
+        self.domestic_orders = 0
+        self.international_orders = 0
+        self.digital_status_changes = 0
+        self.reservation_status_changes = 0
+        self.b2b_status_changes = 0
+        self.happy_together_processed = 0
+        self.errors = []
+        self.warnings = []
+    
+    def add_domestic_orders(self, count):
+        """국내 배송 주문 수 추가"""
+        self.domestic_orders += count
+    
+    def add_international_orders(self, count):
+        """국제 배송 주문 수 추가"""
+        self.international_orders += count
+    
+    def add_digital_status_changes(self, count):
+        """디지털 상품 상태 변경 수 추가"""
+        self.digital_status_changes += count
+    
+    def add_reservation_status_changes(self, count):
+        """예약 상품 상태 변경 수 추가"""
+        self.reservation_status_changes += count
+    
+    def add_b2b_status_changes(self, count):
+        """B2B 상품 상태 변경 수 추가"""
+        self.b2b_status_changes += count
+    
+    def add_happy_together(self, count):
+        """해피투게더 처리 수 추가"""
+        self.happy_together_processed += count
+    
+    def add_error(self, error_msg):
+        """오류 추가"""
+        self.errors.append(error_msg)
+    
+    def add_warning(self, warning_msg):
+        """경고 추가"""
+        self.warnings.append(warning_msg)
+    
+    def get_summary(self):
+        """처리 결과 요약 반환"""
+        summary = []
+        summary.append("=== 3PL 처리 결과 요약 ===")
+        summary.append("")
+        summary.append("📊 처리된 주문:")
+        summary.append(f"   🏠 국내 배송: {self.domestic_orders}건")
+        summary.append(f"   🌍 국제 배송 (EMS): {self.international_orders}건")
+        summary.append("")
+        summary.append("🔄 상태 변경:")
+        summary.append(f"   📱 디지털 상품 → shipped: {self.digital_status_changes}건")
+        summary.append(f"   📦 예약 상품 → processing: {self.reservation_status_changes}건")
+        summary.append(f"   🏢 B2B 상품 → shipped: {self.b2b_status_changes}건")
+        summary.append("")
+        summary.append("🎁 특수 처리:")
+        summary.append(f"   👫 해피투게더 처리: {self.happy_together_processed}건")
+        
+        if self.errors:
+            summary.append("")
+            summary.append("❌ 오류 발생:")
+            for error in self.errors:
+                summary.append(f"   • {error}")
+        
+        if self.warnings:
+            summary.append("")
+            summary.append("⚠️ 주의사항:")
+            for warning in self.warnings:
+                summary.append(f"   • {warning}")
+        
+        if not self.errors and not self.warnings:
+            summary.append("")
+            summary.append("✅ 모든 처리가 성공적으로 완료되었습니다.")
+        
+        return "\n".join(summary)
+
+# 전역 결과 수집기
+processing_results = ProcessingResults()

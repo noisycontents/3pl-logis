@@ -23,8 +23,8 @@ def process_mini_domestic_orders(df):
     
     # B2B 상품 및 디지털 상품 제외
     domestic = domestic[
-        (~domestic["SKU"].str.contains("B2B", na=False)) &
-        (~domestic["SKU"].str.endswith("[디지털]", na=False))
+        (~domestic["SKU"].str.contains("[B2B]", na=False)) &
+        (~domestic["SKU"].str.contains("[디지털]", na=False))
     ].copy()
     
     if domestic.empty:

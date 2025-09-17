@@ -47,8 +47,8 @@ def process_dok_international_orders(df):
     
     # B2B 상품 및 디지털 상품 제외 (해외배송은 실물만)
     overseas = overseas[
-        (~overseas["SKU"].str.contains("B2B", na=False)) &
-        (~overseas["SKU"].str.endswith("[디지털]", na=False))
+        (~overseas["SKU"].str.contains("[B2B]", na=False)) &
+        (~overseas["SKU"].str.contains("[디지털]", na=False))
     ].copy()
     
     if overseas.empty:
