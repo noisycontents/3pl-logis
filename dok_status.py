@@ -16,8 +16,8 @@ def update_order_status_in_woocommerce(order_id, new_status):
     
     # 독독독 환경변수
     base_url = os.getenv('DOK_WP_BASE_URL')
-    consumer_key = os.getenv('DOK_WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('DOK_WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('DOK_WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('DOK_WP_WOO_CONSUMER_SECRET')
     
     if not all([base_url, consumer_key, consumer_secret]):
         print("❌ 독독독 WooCommerce API 환경변수가 설정되지 않았습니다")

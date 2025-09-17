@@ -25,12 +25,12 @@ load_dotenv()
 
 # 환경 변수 설정
 MINI_WP_BASE_URL = os.getenv('WP_BASE_URL')
-MINI_WP_CONSUMER_KEY = os.getenv('WP_WOO_Consumer_KEY')
-MINI_WP_CONSUMER_SECRET = os.getenv('WP_WOO_Consumer_SECRET')
+MINI_WP_CONSUMER_KEY = os.getenv('WP_WOO_CONSUMER_KEY')
+MINI_WP_CONSUMER_SECRET = os.getenv('WP_WOO_CONSUMER_SECRET')
 
 DOK_WP_BASE_URL = os.getenv('DOK_WP_BASE_URL')
-DOK_WP_CONSUMER_KEY = os.getenv('DOK_WP_WOO_Consumer_KEY')
-DOK_WP_CONSUMER_SECRET = os.getenv('DOK_WP_WOO_Consumer_SECRET')
+DOK_WP_CONSUMER_KEY = os.getenv('DOK_WP_WOO_CONSUMER_KEY')
+DOK_WP_CONSUMER_SECRET = os.getenv('DOK_WP_WOO_CONSUMER_SECRET')
 
 def process_happy_together_for_site(site_name, base_url, consumer_key, consumer_secret, start_date, end_date):
     """사이트별 해피투게더 처리 (completed 상태 주문만)"""

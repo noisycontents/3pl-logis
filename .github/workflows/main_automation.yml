@@ -34,15 +34,15 @@ jobs:
       env:
         # 미니학습지 환경변수
         WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
-        WP_WOO_CONSUMER_KEY: ${{ secrets.WP_WOO_CONSUMER_KEY }}
-        WP_WOO_CONSUMER_SECRET: ${{ secrets.WP_WOO_CONSUMER_SECRET }}
+        WP_WOO_Consumer_KEY: ${{ secrets.WP_WOO_CONSUMER_KEY }}
+        WP_WOO_Consumer_SECRET: ${{ secrets.WP_WOO_CONSUMER_SECRET }}
         WP_APP_USER: ${{ secrets.WP_APP_USER }}
         WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
         
         # 독독독 환경변수
         DOK_WP_BASE_URL: ${{ secrets.DOK_WP_BASE_URL }}
-        DOK_WP_WOO_CONSUMER_KEY: ${{ secrets.DOK_WP_WOO_CONSUMER_KEY }}
-        DOK_WP_WOO_CONSUMER_SECRET: ${{ secrets.DOK_WP_WOO_CONSUMER_SECRET }}
+        DOK_WP_WOO_Consumer_KEY: ${{ secrets.DOK_WP_WOO_CONSUMER_KEY }}
+        DOK_WP_WOO_Consumer_SECRET: ${{ secrets.DOK_WP_WOO_CONSUMER_SECRET }}
         DOK_WP_APP_USER: ${{ secrets.DOK_WP_APP_USER }}
         DOK_WP_APP_PASSWORD: ${{ secrets.DOK_WP_APP_PASSWORD }}
         

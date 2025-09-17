@@ -16,8 +16,8 @@ def update_order_status_in_woocommerce(order_id, new_status):
     
     # 미니학습지 환경변수
     base_url = os.getenv('WP_BASE_URL')
-    consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
     if not all([base_url, consumer_key, consumer_secret]):
         print("❌ 미니학습지 WooCommerce API 환경변수가 설정되지 않았습니다")

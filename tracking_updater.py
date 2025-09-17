@@ -179,12 +179,12 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="HANJIN"
     # 사이트별 환경변수
     if site == "mini":
         base_url = os.getenv('WP_BASE_URL')
-        consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-        consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+        consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     elif site == "dok":
         base_url = os.getenv('DOK_WP_BASE_URL')
-        consumer_key = os.getenv('DOK_WP_WOO_Consumer_KEY')
-        consumer_secret = os.getenv('DOK_WP_WOO_Consumer_SECRET')
+        consumer_key = os.getenv('DOK_WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('DOK_WP_WOO_CONSUMER_SECRET')
     else:
         print(f"❌ 지원하지 않는 사이트: {site}")
         return False
@@ -503,12 +503,12 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
     # 사이트별 환경변수
     if site == "mini":
         base_url = os.getenv('WP_BASE_URL')
-        consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-        consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+        consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     elif site == "dok":
         base_url = os.getenv('DOK_WP_BASE_URL')
-        consumer_key = os.getenv('DOK_WP_WOO_Consumer_KEY')
-        consumer_secret = os.getenv('DOK_WP_WOO_Consumer_SECRET')
+        consumer_key = os.getenv('DOK_WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('DOK_WP_WOO_CONSUMER_SECRET')
     else:
         print(f"❌ 지원하지 않는 사이트: {site}")
         return False

@@ -113,8 +113,8 @@ def ensure_wc_customer_by_user_id(user_id, email, first_name=""):
     """WooCommerce 고객 레코드 보장 (없으면 초기화)"""
     
     base_url = os.getenv('WP_BASE_URL')
-    consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
     print(f"🔄 WooCommerce 고객 레코드 확인/초기화: User ID {user_id}")
     
@@ -201,8 +201,8 @@ def check_if_friend_order_exists(original_order_id, friend_email):
     """meta_data의 원본_주문번호로 중복 주문 확인"""
     
     base_url = os.getenv('WP_BASE_URL')
-    consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
     # 최근 주문들에서 원본 주문번호가 메타데이터에 있는지 확인
     orders_url = f"{base_url}/wp-json/wc/v3/orders"
@@ -251,8 +251,8 @@ def get_original_customer_info(order_id):
     """원본 주문의 고객 정보 가져오기"""
     
     base_url = os.getenv('WP_BASE_URL')
-    consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
     order_url = f'{base_url}/wp-json/wc/v3/orders/{order_id}'
     params = {
@@ -281,13 +281,13 @@ def create_new_order_for_friend(friend_email, product_name, original_order_id, o
     
     # 미니학습지 환경변수
     base_url = os.getenv('WP_BASE_URL')
-    consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     happy_together_product_id = os.getenv('HAPPY_TOGETHER_PRODUCT_ID')
     
     if not all([base_url, consumer_key, consumer_secret, happy_together_product_id]):
         print("❌ 해피투게더 환경변수가 설정되지 않았습니다")
-        print("   필요한 환경변수: WP_BASE_URL, WP_WOO_Consumer_KEY, WP_WOO_Consumer_SECRET, HAPPY_TOGETHER_PRODUCT_ID")
+        print("   필요한 환경변수: WP_BASE_URL, WP_WOO_CONSUMER_KEY, WP_WOO_CONSUMER_SECRET, HAPPY_TOGETHER_PRODUCT_ID")
         return False
     
     # 주문 생성 시나리오 결정 (안정적 플로우 사용)
@@ -402,8 +402,8 @@ def get_order_details_with_options(order_id):
     """주문 상세 정보 및 옵션 조회"""
     
     base_url = os.getenv('WP_BASE_URL')
-    consumer_key = os.getenv('WP_WOO_Consumer_KEY')
-    consumer_secret = os.getenv('WP_WOO_Consumer_SECRET')
+    consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+    consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
     
     order_url = f'{base_url}/wp-json/wc/v3/orders/{order_id}'
     params = {
