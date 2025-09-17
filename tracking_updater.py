@@ -25,60 +25,68 @@ SCOPES = [
 def authenticate_google_services():
     """Google Drive 및 Sheets API 인증"""
     
-    # 환경변수 디버깅
-    print("🔍 Google Service Account 환경변수 확인...")
-    project_id = os.getenv('GOOGLE_PROJECT_ID')
-    private_key = os.getenv('GOOGLE_PRIVATE_KEY')
-    client_email = os.getenv('GOOGLE_CLIENT_EMAIL')
-    
-    print(f"   Project ID: {'✅' if project_id else '❌'} ({project_id[:20] if project_id else 'None'}...)")
-    print(f"   Client Email: {'✅' if client_email else '❌'} ({client_email[:30] if client_email else 'None'}...)")
-    print(f"   Private Key: {'✅' if private_key else '❌'} ({'존재' if private_key else 'None'})")
-    
-    # 전체 환경변수 목록에서 GOOGLE_ 시작하는 것들 확인
-    google_env_vars = {k: v for k, v in os.environ.items() if k.startswith('GOOGLE_')}
-    print(f"   🔍 GOOGLE_ 환경변수 개수: {len(google_env_vars)}")
-    for key in sorted(google_env_vars.keys()):
-        value = google_env_vars[key]
-        if 'PRIVATE_KEY' in key:
-            print(f"      {key}: {'✅ 존재' if value else '❌ 없음'}")
-        else:
-            print(f"      {key}: {value[:20] if value else 'None'}...")
-    
-    if private_key:
-        # Private Key 줄바꿈 처리 (GitHub Secrets 형식 대응)
-        private_key = private_key.replace('\\n', '\n')
-        print(f"   Private Key 길이: {len(private_key)} 문자")
-        print(f"   Private Key 시작: {private_key[:30]}...")
+    try:
+        # 환경변수 디버깅
+        print("🔍 Google Service Account 환경변수 확인...")
+        project_id = os.getenv('GOOGLE_PROJECT_ID')
+        private_key = os.getenv('GOOGLE_PRIVATE_KEY')
+        client_email = os.getenv('GOOGLE_CLIENT_EMAIL')
         
-        # BEGIN/END 헤더 확인
-        has_begin = "-----BEGIN PRIVATE KEY-----" in private_key
-        has_end = "-----END PRIVATE KEY-----" in private_key
-        print(f"   BEGIN 헤더: {'✅' if has_begin else '❌'}")
-        print(f"   END 헤더: {'✅' if has_end else '❌'}")
+        print(f"   Project ID: {'✅' if project_id else '❌'} ({project_id[:20] if project_id else 'None'}...)")
+        print(f"   Client Email: {'✅' if client_email else '❌'} ({client_email[:30] if client_email else 'None'}...)")
+        print(f"   Private Key: {'✅' if private_key else '❌'} ({'존재' if private_key else 'None'})")
+        
+        # 전체 환경변수 목록에서 GOOGLE_ 시작하는 것들 확인
+        google_env_vars = {k: v for k, v in os.environ.items() if k.startswith('GOOGLE_')}
+        print(f"   🔍 GOOGLE_ 환경변수 개수: {len(google_env_vars)}")
+        for key in sorted(google_env_vars.keys()):
+            value = google_env_vars[key]
+            if 'PRIVATE_KEY' in key:
+                print(f"      {key}: {'✅ 존재' if value else '❌ 없음'}")
+            else:
+                print(f"      {key}: {value[:20] if value else 'None'}...")
+        
+        if private_key:
+            # Private Key 줄바꿈 처리 (GitHub Secrets 형식 대응)
+            private_key = private_key.replace('\\n', '\n')
+            print(f"   Private Key 길이: {len(private_key)} 문자")
+            print(f"   Private Key 시작: {private_key[:30]}...")
+            
+            # BEGIN/END 헤더 확인
+            has_begin = "-----BEGIN PRIVATE KEY-----" in private_key
+            has_end = "-----END PRIVATE KEY-----" in private_key
+            print(f"   BEGIN 헤더: {'✅' if has_begin else '❌'}")
+            print(f"   END 헤더: {'✅' if has_end else '❌'}")
+        
+        service_account_info = {
+            "type": "service_account",
+            "project_id": project_id,
+            "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
+            "private_key": private_key,
+            "client_email": client_email,
+            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+            "auth_uri": os.getenv('GOOGLE_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
+            "token_uri": os.getenv('GOOGLE_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
+            "auth_provider_x509_cert_url": os.getenv('GOOGLE_AUTH_PROVIDER_X509_CERT_URL', 'https://www.googleapis.com/oauth2/v1/certs'),
+            "client_x509_cert_url": os.getenv('GOOGLE_CLIENT_X509_CERT_URL'),
+            "universe_domain": "googleapis.com"
+        }
+        
+        required_fields = ['project_id', 'private_key', 'client_email']
+        missing_fields = [field for field in required_fields if not service_account_info.get(field)]
+        
+        if missing_fields:
+            print(f"❌ Google Service Account 정보 누락: {missing_fields}")
+            for field in missing_fields:
+                env_var = f"GOOGLE_{field.upper()}"
+                print(f"   {env_var}: {os.getenv(env_var, 'NOT_SET')}")
+            return None, None
     
-    service_account_info = {
-        "type": "service_account",
-        "project_id": project_id,
-        "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
-        "private_key": private_key,
-        "client_email": client_email,
-        "client_id": os.getenv('GOOGLE_CLIENT_ID'),
-        "auth_uri": os.getenv('GOOGLE_AUTH_URI', 'https://accounts.google.com/o/oauth2/auth'),
-        "token_uri": os.getenv('GOOGLE_TOKEN_URI', 'https://oauth2.googleapis.com/token'),
-        "auth_provider_x509_cert_url": os.getenv('GOOGLE_AUTH_PROVIDER_X509_CERT_URL', 'https://www.googleapis.com/oauth2/v1/certs'),
-        "client_x509_cert_url": os.getenv('GOOGLE_CLIENT_X509_CERT_URL'),
-        "universe_domain": "googleapis.com"
-    }
-    
-    required_fields = ['project_id', 'private_key', 'client_email']
-    missing_fields = [field for field in required_fields if not service_account_info.get(field)]
-    
-    if missing_fields:
-        print(f"❌ Google Service Account 정보 누락: {missing_fields}")
-        for field in missing_fields:
-            env_var = f"GOOGLE_{field.upper()}"
-            print(f"   {env_var}: {os.getenv(env_var, 'NOT_SET')}")
+    except Exception as e:
+        print(f"❌ 환경변수 처리 중 오류 발생: {e}")
+        print(f"❌ 오류 타입: {type(e).__name__}")
+        import traceback
+        print(f"❌ 상세 오류:\n{traceback.format_exc()}")
         return None, None
     
     try:
