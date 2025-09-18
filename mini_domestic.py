@@ -4,7 +4,7 @@
 """
 import pandas as pd
 from datetime import datetime
-from common_utils import DOWNLOAD_DIR, is_korean_address, clean_korean_address, apply_string_format
+from common_utils import DOWNLOAD_DIR, is_korean_address, clean_korean_address, apply_string_format, processing_results
 
 def process_mini_domestic_orders(df):
     """미니학습지 국내 주문서 처리"""
@@ -19,6 +19,7 @@ def process_mini_domestic_orders(df):
     
     if domestic.empty:
         print("✅ 미니학습지: 국내 배송 주문 없음")
+        processing_results.add_domestic_orders(0)  # 0건으로 기록
         return
     
     # B2B 상품 및 디지털 상품 제외 (전체 SKU 문자열에서 확인)
@@ -29,6 +30,7 @@ def process_mini_domestic_orders(df):
     
     if domestic.empty:
         print("✅ 미니학습지: B2B 제외 후 국내 주문 없음")
+        processing_results.add_domestic_orders(0)  # 0건으로 기록
         return
     
     # 데이터 처리 (쇼핑몰상품코드는 이미 원래 SKU로 설정됨)
@@ -61,7 +63,6 @@ def process_mini_domestic_orders(df):
     print(f"📦 미니학습지 국내 주문서 저장 완료: {len(domestic)}건 - {dom_path}")
     
     # 결과 수집
-    from common_utils import processing_results
     processing_results.add_domestic_orders(len(domestic))
     
     return dom_path

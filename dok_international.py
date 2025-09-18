@@ -5,13 +5,14 @@
 import pandas as pd
 from datetime import datetime
 import os
-from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product
+from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product, processing_results
 from mini_international import process_overseas_addresses
 
 def process_dok_international_orders(df):
     """독독독 국외(EMS) 주문서 처리"""
     if df.empty:
         print("✅ 독독독: 국외 주문 없음")
+        processing_results.add_international_orders(0)
         return
     
     print("--- 독독독 국외(EMS) 주문서 작성 시작 ---")
@@ -93,7 +94,6 @@ def process_dok_international_orders(df):
     print(f"📦 독독독 EMS 주문서 저장 완료: {len(overseas_ems)}건 - {ems_path}")
     
     # 결과 수집
-    from common_utils import processing_results
     processing_results.add_international_orders(len(overseas_ems))
     
     return ems_path

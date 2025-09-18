@@ -7,7 +7,7 @@ import os
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from common_utils import DOWNLOAD_DIR, update_orders_batch
+from common_utils import DOWNLOAD_DIR, update_orders_batch, processing_results
 
 load_dotenv()
 
@@ -97,7 +97,6 @@ def process_dok_reservation_status_change(df):
     print(f"✅ 독독독 예약 상품 {updated_count}개 주문 상태 변경 완료")
     
     # 결과 수집
-    from common_utils import processing_results
     processing_results.add_reservation_status_changes(updated_count)
     
     return []
@@ -139,7 +138,6 @@ def process_dok_digital_status_change(df):
     print(f"✅ 독독독 디지털 상품 {updated_count}개 주문 상태 변경 완료")
     
     # 결과 수집
-    from common_utils import processing_results
     processing_results.add_digital_status_changes(updated_count)
     
     return []
@@ -181,7 +179,6 @@ def process_dok_b2b_status_change(df):
     print(f"✅ 독독독 B2B 상품 {updated_count}개 주문 상태 변경 완료")
     
     # 결과 수집
-    from common_utils import processing_results
     processing_results.add_b2b_status_changes(updated_count)
     
     return []

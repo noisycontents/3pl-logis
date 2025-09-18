@@ -88,7 +88,7 @@ def find_today_tracking_sheets(drive_service, folder_id, shared_drive_id, date_p
     print(f"🔍 {date_prefix}로 시작하는 송장 시트 검색...")
     
     try:
-        query = f"'{folder_id}' in parents and trashed=false and name contains '{date_prefix}'"
+        query = f"'{folder_id}' in parents and trashed=false and mimeType='application/vnd.google-apps.spreadsheet' and name contains '{date_prefix}'"
         
         results = drive_service.files().list(
             q=query,
@@ -110,18 +110,23 @@ def find_today_tracking_sheets(drive_service, folder_id, shared_drive_id, date_p
             file_name = file['name']
             mime_type = file['mimeType']
             
+            # B2B/본사 파일 필터링 개선
+            import re
+            file_name_lower = file_name.lower()
+            is_b2b = re.search(r'(?:^|[ _-])b2b(?:$|[ ._-])', file_name_lower)
+            is_office = '본사' in file_name
+            
             if ('spreadsheet' in mime_type and 
                 file_name.startswith(date_prefix) and 
-                not file_name.lower().endswith('b2b') and
-                not file_name.endswith('본사')):
+                not is_b2b and not is_office):
                 
                 tracking_sheets.append(file)
                 print(f"🎯 송장 시트 발견: {file_name}")
                 print(f"   ID: {file['id']}")
                 print(f"   수정일: {file['modifiedTime']}")
-            elif file_name.lower().endswith('b2b'):
+            elif is_b2b:
                 print(f"⚠️ B2B 파일 제외: {file_name}")
-            elif file_name.endswith('본사'):
+            elif is_office:
                 print(f"⚠️ 본사 파일 제외: {file_name}")
         
         return tracking_sheets
@@ -131,64 +136,88 @@ def find_today_tracking_sheets(drive_service, folder_id, shared_drive_id, date_p
         return []
 
 
-def download_tracking_data(sheets_service, spreadsheet_id):
-    """송장 시트에서 데이터 다운로드"""
+def download_tracking_data(sheets_service, spreadsheet_id, max_retries=3):
+    """송장 시트에서 데이터 다운로드 (재시도 로직 포함)"""
     
-    try:
-        # 스프레드시트 정보 조회
-        spreadsheet = sheets_service.spreadsheets().get(
-            spreadsheetId=spreadsheet_id
-        ).execute()
-        
-        sheet_title = spreadsheet['properties']['title']
-        print(f"📊 송장 시트: {sheet_title}")
-        
-        # 첫 번째 시트 데이터 조회
-        sheets = spreadsheet.get('sheets', [])
-        if not sheets:
-            print("❌ 시트가 없습니다")
-            return None
-        
-        target_sheet = sheets[0]['properties']['title']
-        print(f"🎯 데이터 조회 시트: {target_sheet}")
-        
-        # 시트 데이터 조회 (A:Z 범위)
-        range_name = f"{target_sheet}!A:Z"
-        
-        result = sheets_service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=range_name
-        ).execute()
-        
-        values = result.get('values', [])
-        
-        if not values or len(values) <= 1:
-            print("📭 송장 데이터가 없습니다")
-            return None
-        
-        print(f"✅ 송장 데이터 조회 성공: {len(values)}행")
-        
-        # DataFrame으로 변환
-        headers = values[0]
-        data_rows = values[1:]
-        
-        # 행 길이 정규화
-        normalized_rows = []
-        for row in data_rows:
-            while len(row) < len(headers):
-                row.append('')
-            normalized_rows.append(row[:len(headers)])
-        
-        df = pd.DataFrame(normalized_rows, columns=headers)
-        
-        print(f"📊 DataFrame 생성: {df.shape[0]}행 x {df.shape[1]}열")
-        print(f"📋 컬럼: {list(df.columns)}")
-        
-        return df
-        
-    except Exception as e:
-        print(f"❌ 송장 데이터 다운로드 실패: {e}")
-        return None
+    import time
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                wait_time = 2 ** attempt  # 지수적 백오프: 2초, 4초, 8초
+                print(f"🔄 재시도 {attempt + 1}/{max_retries} (대기: {wait_time}초)")
+                time.sleep(wait_time)
+            
+            # 스프레드시트 정보 조회 (타임아웃 설정)
+            spreadsheet = sheets_service.spreadsheets().get(
+                spreadsheetId=spreadsheet_id
+            ).execute()
+            
+            sheet_title = spreadsheet['properties']['title']
+            print(f"📊 송장 시트: {sheet_title}")
+            
+            # 첫 번째 시트 데이터 조회
+            sheets = spreadsheet.get('sheets', [])
+            if not sheets:
+                print("❌ 시트가 없습니다")
+                return None
+            
+            target_sheet = sheets[0]['properties']['title']
+            print(f"🎯 데이터 조회 시트: {target_sheet}")
+            
+            # 시트 데이터 조회 (A:Z 범위, 작은 범위로 제한)
+            range_name = f"{target_sheet}!A1:Z1000"  # 1000행으로 제한
+            
+            result = sheets_service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            if not values or len(values) <= 1:
+                print("📭 송장 데이터가 없습니다")
+                return None
+            
+            print(f"✅ 송장 데이터 조회 성공: {len(values)}행")
+            
+            # DataFrame으로 변환
+            headers = values[0]
+            data_rows = values[1:]
+            
+            # 행 길이 정규화
+            normalized_rows = []
+            for row in data_rows:
+                while len(row) < len(headers):
+                    row.append('')
+                normalized_rows.append(row[:len(headers)])
+            
+            df = pd.DataFrame(normalized_rows, columns=headers)
+            
+            print(f"📊 DataFrame 생성: {df.shape[0]}행 x {df.shape[1]}열")
+            print(f"📋 컬럼: {list(df.columns)}")
+            
+            return df
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ 시도 {attempt + 1} 실패: {error_msg}")
+            
+            # Broken pipe, 연결 오류, 타임아웃 등은 재시도 가능
+            if any(keyword in error_msg.lower() for keyword in 
+                   ['broken pipe', 'connection', 'timeout', 'network', 'errno 32']):
+                if attempt < max_retries - 1:
+                    print("🔄 네트워크 오류 감지 - 재시도 예정")
+                    continue
+            
+            # 권한 오류, 파일 없음 등은 재시도 불가
+            if any(keyword in error_msg.lower() for keyword in 
+                   ['permission', 'not found', '404', '403', '401']):
+                print("❌ 복구 불가능한 오류 - 재시도 중단")
+                break
+    
+    print(f"❌ 모든 재시도 실패: {spreadsheet_id}")
+    return None
 
 
 def update_woocommerce_tracking(order_id, tracking_number, carrier_code="HANJIN", carrier_name="한진택배", site="mini"):
@@ -278,26 +307,7 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="HANJIN"
         return False
 
 
-def get_carrier_info_from_tracking(tracking_number):
-    """송장번호 패턴으로 택배사 추정"""
-    
-    # 일반적인 송장번호 패턴 (앞자리 기준)
-    carrier_patterns = {
-        "1": ("HANJIN", "한진택배"),      # 1로 시작
-        "2": ("HANJIN", "한진택배"),      # 2로 시작  
-        "3": ("CJGLS", "CJ대한통운"),     # 3으로 시작
-        "4": ("LOTTE", "롯데택배"),       # 4로 시작
-        "5": ("CJGLS", "CJ대한통운"),     # 5로 시작
-        "6": ("LOGEN", "로젠택배"),       # 6으로 시작
-    }
-    
-    if tracking_number and len(tracking_number) > 0:
-        first_digit = tracking_number[0]
-        if first_digit in carrier_patterns:
-            return carrier_patterns[first_digit]
-    
-    # 기본값: 한진택배
-    return ("HANJIN", "한진택배")
+# 중복 함수 제거됨 - 하단의 get_carrier_info_from_tracking 사용
 
 
 def process_tracking_updates(date_prefix=None):
@@ -415,8 +425,11 @@ def process_tracking_updates(date_prefix=None):
         
         print(f"✅ 송장 데이터 검증 완료: {len(df)}개 주문")
         
-        # 4단계: 각 주문의 송장번호 업데이트
-        print(f"\n4️⃣ 송장번호 업데이트 시작...")
+        # 4단계: 중복 주문 제거 및 배치 처리 준비
+        print(f"\n4️⃣ 송장번호 업데이트 준비...")
+        
+        # 중복 제거를 위한 딕셔너리 (주문번호 → 송장번호)
+        order_tracking_map = {}
         
         for idx, row in df.iterrows():
             order_number = str(row['주문번호']).strip()
@@ -426,64 +439,45 @@ def process_tracking_updates(date_prefix=None):
             if not order_number or not tracking_number or tracking_number.lower() in ['nan', 'none', '']:
                 continue
             
-            # 주문번호에서 사이트 구분 (S = 미니학습지, D = 독독독)
-            if order_number.startswith('S'):
-                site = "mini"
-                # S 접두사 제거
-                order_without_prefix = order_number[1:]
-                # 하이픈이 있는 경우 첫 번째 부분만 사용 (예: 12234-1 → 12234)
-                if '-' in order_without_prefix:
-                    clean_order_id = order_without_prefix.split('-')[0]
-                    print(f"   📝 추가 발송 감지: {order_number} → 기본 주문 {clean_order_id}")
-                else:
-                    clean_order_id = order_without_prefix
-                    
-            elif order_number.startswith('D'):
-                site = "dok"
-                # D 접두사 제거
-                order_without_prefix = order_number[1:]
-                # 하이픈이 있는 경우 첫 번째 부분만 사용 (예: 12234-1 → 12234)
-                if '-' in order_without_prefix:
-                    clean_order_id = order_without_prefix.split('-')[0]
-                    print(f"   📝 추가 발송 감지: {order_number} → 기본 주문 {clean_order_id}")
-                else:
-                    clean_order_id = order_without_prefix
-                    
-            else:
-                # 접두사 없는 경우는 건너뛰기
-                print(f"⚠️ 접두사 없는 주문번호 건너뛰기: {order_number}")
+            # 주문번호 정제 및 사이트 구분
+            clean_order_id, site = parse_order_number(order_number)
+            if not clean_order_id:
                 continue
             
-            print(f"\n📦 주문 처리: {order_number} → {clean_order_id} ({site})")
-            print(f"   송장번호: {tracking_number}")
-            
-            # 배송 유형 결정 (국내/해외)
+            # 배송 유형 및 택배사 정보
             is_international = determine_shipping_type(row)
-            shipping_type = "해외" if is_international else "국내"
-            
-            # 택배사 정보 결정 (해외=EMS, 국내=대한통운)
             carrier_code, carrier_name = get_carrier_info_from_tracking(tracking_number, is_international)
             
-            print(f"   배송 유형: {shipping_type}")
-            print(f"   택배사: {carrier_name} ({carrier_code})")
+            # 중복 제거: 같은 주문번호는 마지막 송장번호 사용
+            order_key = f"{site}_{clean_order_id}"
+            order_tracking_map[order_key] = {
+                'order_id': clean_order_id,
+                'tracking_number': tracking_number,
+                'carrier_code': carrier_code,
+                'carrier_name': carrier_name,
+                'site': site,
+                'original_order': order_number,
+                'shipping_type': "해외" if is_international else "국내"
+            }
+        
+        print(f"📊 중복 제거 후 처리할 주문: {len(order_tracking_map)}개")
+        
+        # 5단계: 배치 처리로 업데이트
+        print(f"\n5️⃣ 배치 처리 시작...")
+        batch_updates = list(order_tracking_map.values())
+        
+        for i in range(0, len(batch_updates), 20):  # 20개씩 배치
+            batch = batch_updates[i:i+20]
+            print(f"📦 배치 {i//20 + 1}/{(len(batch_updates)-1)//20 + 1}: {len(batch)}개 주문 처리 중...")
             
-            # WooCommerce 업데이트
-            success = update_woocommerce_tracking(
-                order_id=clean_order_id,
-                tracking_number=tracking_number,
-                carrier_code=carrier_code,
-                carrier_name=carrier_name,
-                site=site
-            )
+            batch_success, batch_failed = update_woocommerce_batch(batch)
+            total_updated += batch_success
+            total_failed += batch_failed
             
-            if success:
-                total_updated += 1
-                print(f"   ✅ 업데이트 성공")
-            else:
-                total_failed += 1
-                print(f"   ❌ 업데이트 실패")
+            if batch_failed > 0:
+                errors.append(f"배치 {i//20 + 1}: {batch_failed}개 실패")
     
-    print(f"\n🎉 송장번호 업데이트 완료!")
+    print(f"\n🎉 배치 처리 완료!")
     print(f"✅ 성공: {total_updated}개")
     print(f"❌ 실패: {total_failed}개")
     
@@ -498,7 +492,7 @@ def process_tracking_updates(date_prefix=None):
    ✅ 송장 업데이트 성공: {total_updated}건
    ❌ 송장 업데이트 실패: {total_failed}건
 
-📈 성공률: {(total_updated/(total_updated+total_failed)*100):.1f}%" if (total_updated + total_failed) > 0 else "📈 성공률: 0%"""
+📈 성공률: {(total_updated/(total_updated+total_failed)*100):.1f}% """ if (total_updated + total_failed) > 0 else "📈 성공률: 0%"
 
     if errors:
         result_summary += "\n\n❌ 발생한 오류:"
@@ -518,39 +512,8 @@ def process_tracking_updates(date_prefix=None):
     return total_updated > 0
 
 
-def update_order_status(order_url, update_data, base_url, consumer_key, consumer_secret):
-    """주문 상태만 업데이트하는 헬퍼 함수"""
-    try:
-        if base_url.startswith('https://'):
-            params = {
-                'consumer_key': consumer_key,
-                'consumer_secret': consumer_secret
-            }
-            response = requests.put(
-                order_url,
-                params=params,
-                headers={'Content-Type': 'application/json'},
-                data=json.dumps(update_data),
-                timeout=15
-            )
-        else:
-            auth = (consumer_key, consumer_secret)
-            response = requests.put(
-                order_url,
-                auth=auth,
-                headers={'Content-Type': 'application/json'},
-                data=json.dumps(update_data),
-                timeout=15
-            )
-        
-        return response.status_code == 200
-        
-    except Exception as e:
-        print(f"   ❌ 상태 업데이트 오류: {e}")
-        return False
-
-def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS", carrier_name="대한통운", site="mini"):
-    """WooCommerce 주문에 송장번호 업데이트 (UPSERT 방식으로 추가 발송 지원)"""
+def update_woocommerce_tracking_DEPRECATED(order_id, tracking_number, carrier_code="CJGLS", carrier_name="대한통운", site="mini"):
+    """DEPRECATED: 개별 처리 함수 - 배치 처리로 대체됨"""
     
     # 사이트별 환경변수
     if site == "mini":
@@ -571,51 +534,7 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
     
     order_url = f"{base_url}/wp-json/wc/v3/orders/{order_id}"
     
-    # 1단계: 기존 주문 정보 조회 (기존 송장번호 확인)
-    # 기본값으로 새 송장번호 설정
-    final_tracking = tracking_number
-    
-    try:
-        if base_url.startswith('https://'):
-            params = {
-                'consumer_key': consumer_key,
-                'consumer_secret': consumer_secret
-            }
-            get_response = requests.get(order_url, params=params, timeout=15)
-        else:
-            auth = (consumer_key, consumer_secret)
-            get_response = requests.get(order_url, auth=auth, timeout=15)
-        
-        existing_tracking = ""
-        if get_response.status_code == 200:
-            order_data = get_response.json()
-            # 기존 송장번호 확인
-            for meta in order_data.get('meta_data', []):
-                if meta.get('key') == '_msex_sheet_no':
-                    existing_tracking = meta.get('value', '')
-                    break
-            
-            if existing_tracking:
-                print(f"   📋 기존 송장번호 발견: {existing_tracking}")
-                if existing_tracking != tracking_number:
-                    print(f"   🔄 송장번호 교체: {existing_tracking} → {tracking_number}")
-                    # 1단계: 주문상태를 "completed"으로 변경
-                    print(f"   📝 1단계: 주문상태를 completed으로 변경")
-                    temp_update_data = {"status": "completed"}
-                    temp_success = update_order_status(order_url, temp_update_data, base_url, consumer_key, consumer_secret)
-                    if not temp_success:
-                        print(f"   ⚠️ 주문상태 변경 실패 (completed)")
-                else:
-                    print(f"   ⚠️ 동일한 송장번호: {tracking_number}")
-            else:
-                print(f"   📝 새 송장번호 등록: {tracking_number}")
-        else:
-            print(f"   ⚠️ 기존 주문 조회 실패: {get_response.status_code}")
-            
-    except Exception as e:
-        print(f"   ⚠️ 기존 주문 조회 오류: {e}")
-    
-    # 2단계: 송장번호 업데이트
+    # 송장번호 업데이트
     register_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # 엠샵 플러그인 메타 키들 (UPSERT)
@@ -630,7 +549,7 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
         },
         {
             "key": "_msex_sheet_no",
-            "value": final_tracking  # 새 송장번호로 대체
+            "value": tracking_number
         },
         {
             "key": "_msex_register_date",
@@ -638,8 +557,8 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
         }
     ]
     
-    # 2단계: 송장번호 + 상태를 shipping으로 업데이트
-    print(f"   📝 2단계: 송장번호 등록 + 주문상태를 shipping으로 변경")
+    # 송장번호 + 상태를 shipping으로 업데이트
+    print(f"   📝 송장번호: {tracking_number} → shipping 상태")
     
     update_data = {
         "meta_data": meta_data,
@@ -681,6 +600,29 @@ def update_woocommerce_tracking(order_id, tracking_number, carrier_code="CJGLS",
         return False
 
 
+def parse_order_number(order_number):
+    """주문번호를 파싱하여 clean_order_id와 site 반환"""
+    if order_number.startswith('S'):
+        site = "mini"
+        order_without_prefix = order_number[1:]
+        if '-' in order_without_prefix:
+            clean_order_id = order_without_prefix.split('-')[0]
+        else:
+            clean_order_id = order_without_prefix
+        return clean_order_id, site
+        
+    elif order_number.startswith('D'):
+        site = "dok"
+        order_without_prefix = order_number[1:]
+        if '-' in order_without_prefix:
+            clean_order_id = order_without_prefix.split('-')[0]
+        else:
+            clean_order_id = order_without_prefix
+        return clean_order_id, site
+    else:
+        print(f"⚠️ 접두사 없는 주문번호 건너뛰기: {order_number}")
+        return None, None
+
 def get_carrier_info_from_tracking(tracking_number, is_international=False):
     """송장번호 패턴과 배송 유형으로 택배사 결정"""
     
@@ -693,21 +635,150 @@ def get_carrier_info_from_tracking(tracking_number, is_international=False):
 
 
 def determine_shipping_type(row):
-    """배송 유형 결정 (국내/해외)"""
+    """배송 유형 결정 (국내/해외) - 개선된 로직"""
     
     address = str(row.get('배송지주소', '')).strip()
     country_code = str(row.get('국가코드', '')).strip()
     
-    # 국가코드가 있고 KR이 아니면 해외
-    if country_code and country_code.upper() != 'KR':
-        return True  # 해외
+    # 1순위: 국가코드 우선 확인
+    if country_code:
+        return country_code.upper() != 'KR'
     
-    # 주소에 한글이 없으면 해외
-    import re
-    if address and not re.search(r'[가-힣]', address):
-        return True  # 해외
+    # 2순위: 주소에 해외 국가명 포함 확인
+    if address:
+        import re
+        address_upper = address.upper()
+        overseas_keywords = [
+            'USA', 'UNITED STATES', 'AMERICA', 'US',
+            'JAPAN', 'TOKYO', 'OSAKA', 'JP', 
+            'CHINA', 'BEIJING', 'SHANGHAI', 'CN',
+            'SINGAPORE', 'SG', 'TAIWAN', 'TW',
+            'HONG KONG', 'HK', 'VIETNAM', 'VN'
+        ]
+        
+        for keyword in overseas_keywords:
+            if keyword in address_upper:
+                return True  # 해외
+        
+        # 3순위: 한글 포함 여부 (보조 판단)
+        has_korean = bool(re.search(r'[가-힣]', address))
+        has_english = bool(re.search(r'[A-Za-z]', address))
+        
+        # 영문만 있고 한글이 없으면 해외 가능성 높음 (하지만 확실하지 않음)
+        if has_english and not has_korean and len(address) > 10:
+            return True  # 해외 (낮은 확신도)
     
-    return False  # 국내
+    return False  # 국내 (기본값)
+
+
+def update_woocommerce_batch(batch_data):
+    """WooCommerce Batch API를 사용한 대량 업데이트"""
+    if not batch_data:
+        return 0, 0
+    
+    # 사이트별로 분리
+    mini_orders = [item for item in batch_data if item['site'] == 'mini']
+    dok_orders = [item for item in batch_data if item['site'] == 'dok']
+    
+    total_success = 0
+    total_failed = 0
+    
+    # 미니학습지 배치 처리
+    if mini_orders:
+        success, failed = process_batch_for_site(mini_orders, 'mini')
+        total_success += success
+        total_failed += failed
+    
+    # 독독독 배치 처리
+    if dok_orders:
+        success, failed = process_batch_for_site(dok_orders, 'dok')
+        total_success += success
+        total_failed += failed
+    
+    return total_success, total_failed
+
+def process_batch_for_site(orders, site):
+    """특정 사이트의 주문들을 배치로 처리"""
+    if site == "mini":
+        base_url = os.getenv('WP_BASE_URL')
+        consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
+    elif site == "dok":
+        base_url = os.getenv('DOK_WP_BASE_URL')
+        consumer_key = os.getenv('DOK_WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('DOK_WP_WOO_CONSUMER_SECRET')
+    else:
+        return 0, len(orders)
+    
+    if not all([base_url, consumer_key, consumer_secret]):
+        print(f"❌ {site} 환경변수 누락")
+        return 0, len(orders)
+    
+    # 배치 데이터 생성
+    batch_update = {
+        "update": []
+    }
+    
+    register_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    for order in orders:
+        meta_data = [
+            {"key": "_msex_dlv_code", "value": order['carrier_code']},
+            {"key": "_msex_dlv_name", "value": order['carrier_name']},
+            {"key": "_msex_sheet_no", "value": order['tracking_number']},
+            {"key": "_msex_register_date", "value": register_date}
+        ]
+        
+        batch_update["update"].append({
+            "id": int(order['order_id']),
+            "meta_data": meta_data,
+            "status": "shipping"
+        })
+    
+    # API 호출
+    try:
+        batch_url = f"{base_url}/wp-json/wc/v3/orders/batch"
+        
+        if base_url.startswith('https://'):
+            params = {'consumer_key': consumer_key, 'consumer_secret': consumer_secret}
+            response = requests.post(batch_url, params=params, json=batch_update, timeout=30)
+        else:
+            auth = (consumer_key, consumer_secret)
+            response = requests.post(batch_url, auth=auth, json=batch_update, timeout=30)
+        
+        if response.status_code == 200:
+            result = response.json()
+            update_results = result.get('update', [])
+            
+            # 실제 성공/실패 개수 계산
+            success_count = 0
+            failed_count = 0
+            
+            for item in update_results:
+                if 'error' in item:
+                    failed_count += 1
+                    error_msg = item.get('error', {}).get('message', 'Unknown error')
+                    print(f"   ⚠️ 주문 {item.get('id', '?')} 실패: {error_msg}")
+                elif 'id' in item:
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    print(f"   ⚠️ 알 수 없는 응답: {item}")
+            
+            print(f"   ✅ {site} 배치 완료: {success_count}개 성공, {failed_count}개 실패")
+            return success_count, failed_count
+        else:
+            print(f"   ❌ {site} 배치 실패: {response.status_code}")
+            try:
+                error_detail = response.json()
+                print(f"   상세: {error_detail}")
+            except:
+                print(f"   응답: {response.text[:200]}")
+            return 0, len(orders)
+            
+    except Exception as e:
+        print(f"   ❌ {site} 배치 오류: {e}")
+        return 0, len(orders)
 
 
 if __name__ == "__main__":
@@ -729,6 +800,3 @@ if __name__ == "__main__":
     else:
         print(f"\n❌ {date_prefix} 송장번호 업데이트 실패")
     
-    print("\n사용법:")
-    print("  python3 tracking_updater.py          # 오늘 날짜 자동")
-    print("  python3 tracking_updater.py 250915   # 특정 날짜 지정")

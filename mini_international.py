@@ -8,7 +8,7 @@ import requests
 import re
 import time
 import os
-from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product
+from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product, processing_results
 
 def normalize_address_with_google_maps(address, api_key):
     """Google Maps API를 사용한 주소 정규화 및 국가코드 추출"""
@@ -161,6 +161,7 @@ def process_mini_international_orders(df):
     """미니학습지 국외(EMS) 주문서 처리"""
     if df.empty:
         print("✅ 미니학습지: 국외 주문 없음")
+        processing_results.add_international_orders(0)
         return
     
     print("--- 미니학습지 국외(EMS) 주문서 작성 시작 ---")
@@ -192,6 +193,7 @@ def process_mini_international_orders(df):
     
     if overseas.empty:
         print("✅ 미니학습지: 유효한 해외 배송 주소 없음")
+        processing_results.add_international_orders(0)
         return
     
     # B2B 상품 및 디지털 상품 제외 (전체 SKU 문자열에서 확인)
@@ -202,6 +204,7 @@ def process_mini_international_orders(df):
     
     if overseas.empty:
         print("✅ 미니학습지: 해외 실물 배송 주문 없음 (디지털/B2B 제외)")
+        processing_results.add_international_orders(0)
         return
     
     # 데이터 처리 (쇼핑몰상품코드는 이미 원래 SKU로 설정됨)
@@ -242,7 +245,6 @@ def process_mini_international_orders(df):
     print(f"📦 미니학습지 EMS 주문서 저장 완료: {len(overseas_ems)}건 - {ems_path}")
     
     # 결과 수집
-    from common_utils import processing_results
     processing_results.add_international_orders(len(overseas_ems))
     
     return ems_path
