@@ -791,3 +791,51 @@ class ProcessingResults:
 
 # 전역 결과 수집기
 processing_results = ProcessingResults()
+
+def filter_po_box_orders(df):
+    """사서함 주소가 포함된 주문을 분리하고 엑셀로 저장"""
+    if df.empty:
+        return df, None
+    
+    # 사서함 관련 키워드로 필터링 (대소문자 구분 없음, 정규식 이스케이프 처리)
+    po_box_keywords = [
+        '사서함',
+        r'P\.O\.Box',     # P.O.Box (점을 이스케이프)
+        r'P\.O\. Box',    # P.O. Box (점을 이스케이프)
+        'PO Box',         # PO Box
+        'POBox',          # POBox
+        'po box'          # po box
+    ]
+    
+    # 주소 컬럼에서 사서함 키워드 검색 (정규식 사용)
+    po_box_pattern = '|'.join(po_box_keywords)
+    po_box_mask = df['주소'].str.contains(po_box_pattern, case=False, na=False, regex=True)
+    
+    # 사서함 주문 분리
+    po_box_orders = df[po_box_mask].copy()
+    regular_orders = df[~po_box_mask].copy()
+    
+    po_box_file_path = None
+    
+    if not po_box_orders.empty:
+        print(f"📮 사서함 주소 주문 {len(po_box_orders)}개 발견")
+        
+        # 현재 날짜로 파일명 생성
+        today_str = datetime.now().strftime('%y%m%d')
+        po_box_file_path = os.path.join(DOWNLOAD_DIR, f"우체국용_사서함_주문_{today_str}.xlsx")
+        
+        try:
+            # 엑셀 파일로 저장
+            po_box_orders.to_excel(po_box_file_path, index=False, engine='openpyxl')
+            print(f"📮 사서함 주문 저장 완료: {po_box_file_path}")
+            
+            # 처리 결과에 추가
+            processing_results.add_warning(f"사서함 주소 주문 {len(po_box_orders)}개 별도 처리")
+            
+        except Exception as e:
+            print(f"❌ 사서함 주문 파일 저장 실패: {e}")
+            po_box_file_path = None
+    else:
+        print("✅ 사서함 주소 주문 없음")
+    
+    return regular_orders, po_box_file_path

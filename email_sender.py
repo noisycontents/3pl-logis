@@ -158,8 +158,8 @@ def collect_shipping_files():
     
     return existing_files
 
-def send_processing_result_email(result_summary):
-    """3PL 처리 결과를 이메일로 발송 (별도 수신자)"""
+def send_processing_result_email(result_summary, po_box_file_path=None):
+    """3PL 처리 결과를 이메일로 발송 (별도 수신자, 사서함 주문 파일 첨부 가능)"""
     
     # 처리 결과 전용 수신자 이메일 설정
     recipient_email = os.getenv('LOGIS_EMAIL_RECIPIENT')
@@ -203,6 +203,26 @@ def send_processing_result_email(result_summary):
 """
         
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # 사서함 주문 파일 첨부 (있는 경우)
+        if po_box_file_path and os.path.exists(po_box_file_path):
+            try:
+                with open(po_box_file_path, "rb") as attachment:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(attachment.read())
+                    encoders.encode_base64(part)
+                    
+                    filename = os.path.basename(po_box_file_path)
+                    encoded_filename = urllib.parse.quote(filename)
+                    
+                    part.add_header(
+                        'Content-Disposition',
+                        f'attachment; filename*=UTF-8\'\'{encoded_filename}'
+                    )
+                    msg.attach(part)
+                    print(f"📎 사서함 주문 파일 첨부: {filename}")
+            except Exception as e:
+                print(f"⚠️ 사서함 파일 첨부 실패: {e}")
         
         # SMTP 서버 연결 및 발송
         print(f"📧 처리 결과 이메일 발송 중... ({recipient_email})")

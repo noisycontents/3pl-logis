@@ -10,7 +10,8 @@ from common_utils import (
     fetch_orders_from_wp, 
     convert_orders_to_dataframe,
     should_skip_today,
-    processing_results
+    processing_results,
+    filter_po_box_orders
 )
 from mini_domestic import process_mini_domestic_orders
 from mini_international import process_mini_international_orders
@@ -94,25 +95,29 @@ def process_site_orders(site_name, base_url, consumer_key, consumer_secret, star
     auth = get_woocommerce_auth(base_url, consumer_key, consumer_secret)
     if not auth:
         print(f"❌ {site_name} 인증 실패")
-        return
+        return None
     
     # 주문 데이터 수집
     orders = fetch_orders_from_wp(base_url, auth, start_date, end_date)
     if not orders:
         print(f"❌ {site_name} 주문 데이터 없음")
-        return
+        return None
     
     # DataFrame 변환
     df = convert_orders_to_dataframe(orders, site_name)
     if df.empty:
         print(f"❌ {site_name} 변환된 주문 데이터 없음")
-        return
+        return None
     
     # 완료된 주문만 필터링
     df = df[df["주문상태"] == "완료됨"].copy()
     if df.empty:
         print(f"✅ {site_name}: 완료된 주문 없음")
-        return
+        return None
+    
+    # 사서함 주문 분리
+    print(f"📮 {site_name} 사서함 주문 분리 중...")
+    df, po_box_file_path = filter_po_box_orders(df)
     
     print(f"📊 {site_name} 주문 분류 및 처리 시작...")
     
@@ -156,6 +161,9 @@ def process_site_orders(site_name, base_url, consumer_key, consumer_secret, star
         process_dok_b2b_status_change(df)
     
     print(f"✅ {site_name} 처리 완료")
+    
+    # 사서함 파일 경로 반환
+    return po_box_file_path
 
 def main():
     """메인 실행 함수"""
@@ -169,6 +177,9 @@ def main():
     
     # 날짜 범위 계산
     start_date, end_date = get_date_range()
+    
+    # 사서함 주문 파일 경로를 추적하기 위한 변수
+    po_box_file_paths = []
     
     # 환경변수 확인
     print("\n🔍 환경변수 확인...")
@@ -194,13 +205,17 @@ def main():
     
     # 독독독 사이트 처리
     if DOK_WP_BASE_URL and DOK_WP_CONSUMER_KEY and DOK_WP_CONSUMER_SECRET:
-        process_site_orders("독독독", DOK_WP_BASE_URL, DOK_WP_CONSUMER_KEY, DOK_WP_CONSUMER_SECRET, start_date, end_date)
+        dok_po_box_file = process_site_orders("독독독", DOK_WP_BASE_URL, DOK_WP_CONSUMER_KEY, DOK_WP_CONSUMER_SECRET, start_date, end_date)
+        if dok_po_box_file:
+            po_box_file_paths.append(dok_po_box_file)
     else:
         print("❌ 독독독 사이트 환경변수 설정이 불완전합니다")
     
     # 미니학습지 사이트 처리
     if MINI_WP_BASE_URL and MINI_WP_CONSUMER_KEY and MINI_WP_CONSUMER_SECRET:
-        process_site_orders("미니학습지", MINI_WP_BASE_URL, MINI_WP_CONSUMER_KEY, MINI_WP_CONSUMER_SECRET, start_date, end_date)
+        mini_po_box_file = process_site_orders("미니학습지", MINI_WP_BASE_URL, MINI_WP_CONSUMER_KEY, MINI_WP_CONSUMER_SECRET, start_date, end_date)
+        if mini_po_box_file:
+            po_box_file_paths.append(mini_po_box_file)
     else:
         print("❌ 미니학습지 사이트 환경변수 설정이 불완전합니다")
     
@@ -225,12 +240,17 @@ def main():
         print("⚠️ 발송할 배송 주문서가 없습니다.")
         processing_results.add_warning("발송할 배송 주문서가 없습니다")
     
-    # 처리 결과 요약 이메일 발송
+    # 처리 결과 요약 이메일 발송 (사서함 주문 파일 첨부)
     print("\n📧 처리 결과 요약 이메일 발송...")
     result_summary = processing_results.get_summary()
     print(result_summary)  # 콘솔에도 출력
     
-    result_email_success = send_processing_result_email(result_summary)
+    # 사서함 파일이 여러 개인 경우 첫 번째 파일만 첨부 (또는 통합 로직 추가 가능)
+    po_box_file_to_attach = po_box_file_paths[0] if po_box_file_paths else None
+    if po_box_file_to_attach:
+        print(f"📎 사서함 주문 파일 첨부 예정: {os.path.basename(po_box_file_to_attach)}")
+    
+    result_email_success = send_processing_result_email(result_summary, po_box_file_to_attach)
     if result_email_success:
         print("✅ 처리 결과 이메일 발송 완료!")
     else:
