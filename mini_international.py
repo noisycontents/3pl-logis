@@ -194,10 +194,10 @@ def process_mini_international_orders(df):
         print("✅ 미니학습지: 유효한 해외 배송 주소 없음")
         return
     
-    # B2B 상품 및 디지털 상품 제외 (해외배송은 실물만)
+    # B2B 상품 및 디지털 상품 제외 (전체 SKU 문자열에서 확인)
     overseas = overseas[
-        (~overseas["SKU"].str.contains("[B2B]", na=False)) &
-        (~overseas["SKU"].str.contains("[디지털]", na=False))
+        (~overseas["SKU"].str.contains("\\[B2B\\]", na=False)) &
+        (~overseas["SKU"].str.contains("\\[디지털\\]", na=False))
     ].copy()
     
     if overseas.empty:
@@ -239,6 +239,10 @@ def process_mini_international_orders(df):
     
     overseas_ems.to_excel(ems_path, index=False)
     apply_string_format(ems_path, ["수량", "수령인연락처1", "수령인연락처2", "우편번호"])
-    print("📦 미니학습지 EMS 주문서 저장 완료:", ems_path)
+    print(f"📦 미니학습지 EMS 주문서 저장 완료: {len(overseas_ems)}건 - {ems_path}")
+    
+    # 결과 수집
+    from common_utils import processing_results
+    processing_results.add_international_orders(len(overseas_ems))
     
     return ems_path

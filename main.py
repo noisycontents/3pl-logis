@@ -82,6 +82,9 @@ def process_happy_together_for_site(site_name, base_url, consumer_key, consumer_
                 print(f"❌ 주문 {order_id} 해피투게더 처리 오류: {e}")
     
     print(f"\n🎁 {site_name} 해피투게더 처리 완료: {processed_count}개 주문 처리")
+    
+    # 결과 수집
+    processing_results.add_happy_together(processed_count)
 
 def process_site_orders(site_name, base_url, consumer_key, consumer_secret, start_date, end_date):
     """사이트별 주문 처리"""
@@ -118,8 +121,8 @@ def process_site_orders(site_name, base_url, consumer_key, consumer_secret, star
         # 1. 미니학습지 예약 상품 상태 변경 (주문서 작성 전)
         process_mini_reservation_status_change(df)
         
-        # 예약 상품 제외한 DataFrame 생성 (상태 변경된 주문 제외)
-        shipping_df = df[~df["SKU"].str.contains("[예약상품]", na=False)].copy()
+        # 예약 상품 제외한 DataFrame 생성 (전체 SKU 문자열에서 확인)
+        shipping_df = df[~df["SKU"].str.contains("\\[예약상품\\]", na=False)].copy()
         
         # 2. 미니학습지 국내 주문서 (예약 제외)
         process_mini_domestic_orders(shipping_df)
@@ -137,8 +140,8 @@ def process_site_orders(site_name, base_url, consumer_key, consumer_secret, star
         # 6. 독독독 예약 상품 상태 변경 (주문서 작성 전)
         process_dok_reservation_status_change(df)
         
-        # 예약 상품 제외한 DataFrame 생성 (상태 변경된 주문 제외)
-        shipping_df = df[~df["SKU"].str.contains("[예약상품]", na=False)].copy()
+        # 예약 상품 제외한 DataFrame 생성 (전체 SKU 문자열에서 확인)
+        shipping_df = df[~df["SKU"].str.contains("\\[예약상품\\]", na=False)].copy()
         
         # 7. 독독독 국내 주문서 (예약 제외)
         process_dok_domestic_orders(shipping_df)

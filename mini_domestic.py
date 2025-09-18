@@ -21,10 +21,10 @@ def process_mini_domestic_orders(df):
         print("✅ 미니학습지: 국내 배송 주문 없음")
         return
     
-    # B2B 상품 및 디지털 상품 제외
+    # B2B 상품 및 디지털 상품 제외 (전체 SKU 문자열에서 확인)
     domestic = domestic[
-        (~domestic["SKU"].str.contains("[B2B]", na=False)) &
-        (~domestic["SKU"].str.contains("[디지털]", na=False))
+        (~domestic["SKU"].str.contains("\\[B2B\\]", na=False)) &
+        (~domestic["SKU"].str.contains("\\[디지털\\]", na=False))
     ].copy()
     
     if domestic.empty:
@@ -58,6 +58,10 @@ def process_mini_domestic_orders(df):
     
     domestic.to_excel(dom_path, index=False)
     apply_string_format(dom_path, ["수량", "수령인연락처1", "수령인연락처2", "우편번호"])
-    print("📦 미니학습지 국내 주문서 저장 완료:", dom_path)
+    print(f"📦 미니학습지 국내 주문서 저장 완료: {len(domestic)}건 - {dom_path}")
+    
+    # 결과 수집
+    from common_utils import processing_results
+    processing_results.add_domestic_orders(len(domestic))
     
     return dom_path

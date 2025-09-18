@@ -362,7 +362,10 @@ def convert_orders_to_dataframe(orders, site_label):
             # 1. 하이픈 이하 제거 (상태 판별용 - 디지털/B2B/예약상품 정보 보존)
             sku_for_status = raw_sku.split('-')[0] if raw_sku else ''
             
-            # 2. 상품명 매핑용 clean_sku (대괄호까지 제거)
+            # 2. 복합 SKU 처리: 전체 SKU에서 [디지털], [B2B], [예약상품] 체크
+            # 복합 SKU라도 전체를 하나의 상품으로 처리 (개별 분리하지 않음)
+            
+            # 3. 상품명 매핑용 clean_sku (대괄호까지 제거, 복합 SKU도 전체 유지)
             import re
             clean_sku = re.sub(r'\[.*?\]', '', sku_for_status).strip()
             
@@ -555,88 +558,63 @@ def apply_string_format(filepath, columns):
         print(f"❌ Excel 형식 적용 실패: {e}")
 
 def get_product_name_mapping():
-    """Google Sheets에서 품번코드-상품명 매핑 데이터 가져오기"""
+    """Supabase에서 품번코드-상품명 매핑 데이터 가져오기"""
     
-    print("📋 상품명 매핑 데이터 가져오는 중...")
+    print("📋 상품명 매핑 데이터 가져오는 중 (Supabase)...")
     
-    # Google Service Account 인증
     try:
-        service_account_info = {
-            "type": "service_account",
-            "project_id": os.getenv('GOOGLE_PROJECT_ID'),
-            "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
-            "private_key": os.getenv('GOOGLE_PRIVATE_KEY'),
-            "client_email": os.getenv('GOOGLE_CLIENT_EMAIL'),
-            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
-            "auth_uri": os.getenv('GOOGLE_AUTH_URI'),
-            "token_uri": os.getenv('GOOGLE_TOKEN_URI'),
-            "auth_provider_x509_cert_url": os.getenv('GOOGLE_AUTH_PROVIDER_X509_CERT_URL'),
-            "client_x509_cert_url": os.getenv('GOOGLE_CLIENT_X509_CERT_URL'),
-            "universe_domain": "googleapis.com"
+        import requests
+        
+        # Supabase 환경변수
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_KEY')
+        
+        if not supabase_url or not supabase_key:
+            print("❌ Supabase 환경변수가 설정되지 않았습니다")
+            print("   필요한 환경변수: SUPABASE_URL, SUPABASE_KEY")
+            return {}
+        
+        # Supabase REST API 호출
+        api_url = f"{supabase_url}/rest/v1/sku_total"
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json"
         }
         
-        required_fields = ['project_id', 'private_key', 'client_email']
-        missing_fields = [field for field in required_fields if not service_account_info.get(field)]
+        # 품번코드와 상품명만 조회
+        params = {
+            "select": "품번코드,상품명"
+        }
         
-        if missing_fields:
-            print(f"❌ Google Service Account 정보 누락: {missing_fields}")
-            return {}
+        response = requests.get(api_url, headers=headers, params=params, timeout=15)
         
-        scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-        credentials = service_account.Credentials.from_service_account_info(
-            service_account_info, scopes=scopes
-        )
-        
-        service = build('sheets', 'v4', credentials=credentials)
-        
-        # 스프레드시트 ID와 시트명
-        spreadsheet_id = '1BnTTqI8W_P3KtJe4E4eQU-PfR-U0WL6HMpGBDJdyvUk'
-        range_name = '실사용!A:B'  # 상품명, 품번코드 컬럼
-        
-        # 데이터 조회
-        result = service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id,
-            range=range_name
-        ).execute()
-        
-        values = result.get('values', [])
-        
-        if not values:
-            print("❌ 매핑 데이터가 없습니다")
-            return {}
-        
-        # 매핑 딕셔너리 생성 {품번코드: 상품명}
-        mapping = {}
-        header_row = values[0] if values else []
-        
-        # 헤더에서 컬럼 인덱스 찾기
-        product_name_idx = -1
-        product_code_idx = -1
-        
-        for i, header in enumerate(header_row):
-            if '상품명' in str(header):
-                product_name_idx = i
-            elif '품번코드' in str(header):
-                product_code_idx = i
-        
-        if product_name_idx == -1 or product_code_idx == -1:
-            print(f"❌ 필요한 컬럼을 찾을 수 없습니다. 헤더: {header_row}")
-            return {}
-        
-        # 데이터 행 처리 (헤더 제외)
-        for row in values[1:]:
-            if len(row) > max(product_name_idx, product_code_idx):
-                product_code = str(row[product_code_idx]).strip() if product_code_idx < len(row) else ''
-                product_name = str(row[product_name_idx]).strip() if product_name_idx < len(row) else ''
+        if response.status_code == 200:
+            data = response.json()
+            
+            if not data:
+                print("❌ Supabase에서 매핑 데이터가 없습니다")
+                return {}
+            
+            # 매핑 딕셔너리 생성 {품번코드: 상품명}
+            mapping = {}
+            for row in data:
+                product_code = str(row.get('품번코드', '')).strip()
+                product_name = str(row.get('상품명', '')).strip()
                 
                 if product_code and product_name:
                     mapping[product_code] = product_name
-        
-        print(f"✅ 상품명 매핑 데이터 로드 완료: {len(mapping)}개")
-        return mapping
-        
+            
+            print(f"✅ Supabase 상품명 매핑 데이터 로드 완료: {len(mapping)}개")
+            return mapping
+            
+        else:
+            print(f"❌ Supabase API 호출 실패: {response.status_code}")
+            print(f"❌ 응답: {response.text[:200]}")
+            return {}
+            
     except Exception as e:
-        print(f"❌ 상품명 매핑 데이터 로드 실패: {e}")
+        print(f"❌ Supabase 상품명 매핑 데이터 로드 실패: {e}")
         return {}
 
 def update_orders_batch(order_ids, status, base_url, consumer_key, consumer_secret):

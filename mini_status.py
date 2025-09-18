@@ -56,35 +56,9 @@ def update_order_status_in_woocommerce(order_id, new_status):
         return False
 
 def create_csv_for_condition(df, condition_name, order_status, filename_suffix):
-    """조건별 CSV 파일 생성"""
-    if df.empty:
-        return
-    
-    print(f"--- 미니학습지 {condition_name} 상품 처리 시작 ---")
-    
-    csv_output = pd.DataFrame()
-    csv_output["order_id"] = df["주문번호"].astype(str)
-    csv_output["order_item_id"] = ""
-    csv_output["div_code"] = ""
-    csv_output["sheet_no"] = ""
-    csv_output["order_status"] = order_status
-    
-    # 중복 제거
-    csv_output = csv_output.drop_duplicates(subset=["order_id"], keep="first")
-    
-    # CSV 파일 저장
-    today_str = datetime.today().strftime('%y%m%d')
-    
-    if filename_suffix == "배송완료":
-        csv_filename = f"CJGLS_sheet_upload_{filename_suffix}_미니.csv"
-    else:
-        csv_filename = f"CJGLS_sheet_upload_{today_str}_{filename_suffix}_미니.csv"
-    
-    csv_path = f"{DOWNLOAD_DIR}/{csv_filename}"
-    csv_output.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"📦 미니학습지 {condition_name} CSV 저장 완료: {csv_path}")
-    
-    return csv_path
+    """조건별 CSV 파일 생성 (레거시 - 더 이상 사용하지 않음)"""
+    print(f"⚠️ CSV 생성 기능은 더 이상 사용되지 않습니다: {condition_name}")
+    return None
 
 def process_mini_reservation_status_change(df):
     """미니학습지 예약 상품 상태 변경 (주문서 작성 전)"""
@@ -94,8 +68,8 @@ def process_mini_reservation_status_change(df):
     
     print("--- 미니학습지 예약 상품 상태 변경 시작 ---")
     
-    # 예약 상품만 필터링
-    reservation_mask = df["SKU"].str.contains("[예약상품]", na=False)
+    # 예약 상품만 필터링 (전체 SKU 문자열에서 확인)
+    reservation_mask = df["SKU"].str.contains("\\[예약상품\\]", na=False)
     reservation_df = df[reservation_mask].copy()
     
     if reservation_df.empty:
@@ -122,11 +96,11 @@ def process_mini_reservation_status_change(df):
     
     print(f"✅ 미니학습지 예약 상품 {updated_count}개 주문 상태 변경 완료")
     
-    # CSV 파일 생성
-    today_str = datetime.today().strftime('%y%m%d')
-    csv_path = create_csv_for_condition(reservation_df, "예약 상품 (처리중)", "processing", f"{today_str}_처리중")
+    # 결과 수집
+    from common_utils import processing_results
+    processing_results.add_reservation_status_changes(updated_count)
     
-    return [csv_path] if csv_path else []
+    return []
 
 def process_mini_digital_status_change(df):
     """미니학습지 디지털 상품 상태 변경"""
@@ -136,8 +110,8 @@ def process_mini_digital_status_change(df):
     
     print("--- 미니학습지 디지털 상품 (배송완료) 상품 처리 시작 ---")
     
-    # 디지털 상품만 필터링
-    digital_mask = df["SKU"].str.endswith("[디지털]", na=False)
+    # 디지털 상품만 필터링 (전체 SKU 문자열에서 확인)
+    digital_mask = df["SKU"].str.contains("\\[디지털\\]", na=False)
     digital_df = df[digital_mask].copy()
     
     if digital_df.empty:
@@ -164,10 +138,11 @@ def process_mini_digital_status_change(df):
     
     print(f"✅ 미니학습지 디지털 상품 {updated_count}개 주문 상태 변경 완료")
     
-    # CSV 파일 생성
-    csv_path = create_csv_for_condition(digital_df, "디지털 상품 (배송완료)", "shipped", "배송완료")
+    # 결과 수집
+    from common_utils import processing_results
+    processing_results.add_digital_status_changes(updated_count)
     
-    return [csv_path] if csv_path else []
+    return []
 
 def process_mini_b2b_status_change(df):
     """미니학습지 B2B 상품 상태 변경"""
@@ -177,8 +152,8 @@ def process_mini_b2b_status_change(df):
     
     print("--- 미니학습지 B2B 상품 (배송완료) 상품 처리 시작 ---")
     
-    # B2B 상품만 필터링
-    b2b_mask = df["SKU"].str.contains("[B2B]", na=False)
+    # B2B 상품만 필터링 (전체 SKU 문자열에서 확인)
+    b2b_mask = df["SKU"].str.contains("\\[B2B\\]", na=False)
     b2b_df = df[b2b_mask].copy()
     
     if b2b_df.empty:
@@ -205,11 +180,11 @@ def process_mini_b2b_status_change(df):
     
     print(f"✅ 미니학습지 B2B 상품 {updated_count}개 주문 상태 변경 완료")
     
-    # CSV 파일 생성
-    today_str = datetime.today().strftime('%y%m%d')
-    csv_path = create_csv_for_condition(b2b_df, "B2B 상품 (배송완료)", "shipped", f"{today_str}_B2B_배송완료")
+    # 결과 수집
+    from common_utils import processing_results
+    processing_results.add_b2b_status_changes(updated_count)
     
-    return [csv_path] if csv_path else []
+    return []
 
 def process_mini_status_changes(df):
     """미니학습지 주문상태 변경 처리 (전체) - 레거시 함수"""
@@ -222,7 +197,7 @@ def process_mini_status_changes(df):
     # SKU 조건별 분류 (정확한 패턴 매칭)
     conditions = {
         "디지털": {
-            "mask": df["SKU"].str.endswith("[디지털]", na=False),  # 정확히 끝에 있는 경우만
+            "mask": df["SKU"].str.contains("\\[디지털\\]", na=False),  # 전체 SKU에서 확인
             "status": "shipped",
             "filename": "배송완료",
             "description": "디지털 상품 (배송완료)"
@@ -255,8 +230,8 @@ def process_mini_status_changes(df):
                 order_items = df[df["주문번호"] == order_num]
                 
                 # 해당 주문의 모든 SKU 확인
-                has_digital = order_items["SKU"].str.endswith("[디지털]", na=False).any()
-                has_physical = (~order_items["SKU"].str.endswith("[디지털]", na=False) & 
+                has_digital = order_items["SKU"].str.contains("\\[디지털\\]", na=False).any()
+                has_physical = (~order_items["SKU"].str.contains("\\[디지털\\]", na=False) & 
                               ~order_items["SKU"].str.contains("[예약상품]", na=False) &
                               ~order_items["SKU"].str.contains("[B2B]", na=False)).any()
                 
