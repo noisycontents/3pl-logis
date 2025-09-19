@@ -809,7 +809,7 @@ def filter_po_box_orders(df):
     
     # 주소 컬럼에서 사서함 키워드 검색 (정규식 사용)
     po_box_pattern = '|'.join(po_box_keywords)
-    po_box_mask = df['주소'].str.contains(po_box_pattern, case=False, na=False, regex=True)
+    po_box_mask = df['배송지주소'].str.contains(po_box_pattern, case=False, na=False, regex=True)
     
     # 사서함 주문 분리
     po_box_orders = df[po_box_mask].copy()
