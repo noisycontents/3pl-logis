@@ -390,6 +390,7 @@ def convert_orders_to_dataframe(orders, site_label):
                 '수량': str(item.get('quantity', 1)),
                 '수령인명': (shipping.get('first_name', '') + ' ' + shipping.get('last_name', '')).strip(),
                 '수령인 연락처': billing.get('phone', ''),
+                '수령인 이메일': billing.get('email', ''),  # EMS용 이메일 정보 추가
                 '우편번호': shipping.get('postcode', ''),
                 '배송지주소': build_clean_address(shipping),
                 '배송메세지': customer_note
@@ -421,6 +422,31 @@ def is_korean_address(addr):
             return True
     
     return False
+
+def has_korean_characters(text):
+    """텍스트에 한글이 포함되어 있는지 확인"""
+    if pd.isna(text):
+        return False
+    return bool(re.search(r'[가-힣]', str(text)))
+
+def filter_korean_recipients(df):
+    """EMS 발송에서 한글 수령인명을 가진 주문들을 필터링하여 분리"""
+    if df.empty:
+        return df, pd.DataFrame()
+    
+    # 한글 수령인명 확인
+    korean_recipients_mask = df['수령인명'].apply(has_korean_characters)
+    
+    # 한글 이름과 영문 이름 분리
+    korean_orders = df[korean_recipients_mask].copy()
+    valid_orders = df[~korean_recipients_mask].copy()
+    
+    if not korean_orders.empty:
+        print(f"⚠️ 한글 수령인명으로 인해 EMS 처리에서 제외된 주문: {len(korean_orders)}개")
+        for idx, row in korean_orders.iterrows():
+            print(f"   - 주문번호 {row['주문번호']}: '{row['수령인명']}' (주소: {str(row['배송지주소'])[:50]}...)")
+    
+    return valid_orders, korean_orders
 
 def is_pure_digital_product(sku):
     """순수 디지털 상품인지 판별 (실물 패키지 + 디지털 보너스와 구분)"""
@@ -470,24 +496,29 @@ def build_clean_address(shipping):
     if address_2:
         address_parts.append(address_2)
     
-    # 3. 지역 정보 중복 제거 처리
+    # 3. 지역 정보 중복 제거 처리 (개선된 로직)
     region_parts = []
     
-    # state가 가장 큰 단위 (예: 경기도)
-    if state and state not in region_parts:
-        region_parts.append(state)
-    
-    # city가 state와 다르고, state에 포함되지 않으면 추가
-    if city and city != state and city not in region_parts:
-        # city가 state의 일부가 아닌 경우만 추가
-        if not (state and city in state):
-            region_parts.append(city)
-    
-    # country는 한국 관련이 아니고, 이미 추가된 지역과 다른 경우만 추가
+    # 모든 지역 정보를 수집한 후 중복 제거
+    potential_regions = []
+    if state:
+        potential_regions.append(state)
+    if city and city != state:
+        potential_regions.append(city)
     if (country and 
-        country.upper() not in ['KR', 'KOREA', 'SOUTH KOREA', '대한민국', '한국'] and
-        country != state and country != city):
-        region_parts.append(country)
+        country.upper() not in ['KR', 'KOREA', 'SOUTH KOREA', '대한민국', '한국']):
+        potential_regions.append(country)
+    
+    # 중복 제거: 한 지역이 다른 지역에 포함되어 있으면 제거
+    for region in potential_regions:
+        is_duplicate = False
+        for other_region in potential_regions:
+            if region != other_region and region in other_region:
+                # region이 other_region에 포함되어 있으면 중복으로 간주
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            region_parts.append(region)
     
     # 주소 구성 (한국 vs 해외 구분)
     is_korean = (state and any(keyword in state for keyword in ['도', '시', '특별시', '광역시']) or
@@ -503,10 +534,17 @@ def build_clean_address(shipping):
     # 최종 주소 생성
     full_address = ' '.join(final_parts).strip()
     
-    # 연속된 공백 정리
+    # 연속된 공백 정리 및 추가 중복 제거
     full_address = re.sub(r'\s+', ' ', full_address)
     
-    return full_address
+    # 같은 단어가 연속으로 나오는 경우 제거 (예: "서울시 서울시" → "서울시")
+    words = full_address.split()
+    cleaned_words = []
+    for word in words:
+        if not cleaned_words or word != cleaned_words[-1]:
+            cleaned_words.append(word)
+    
+    return ' '.join(cleaned_words)
 
 def clean_korean_address(addr):
     """한국 주소에서 불필요한 'KR' 제거"""
@@ -753,6 +791,25 @@ class ProcessingResults:
     def add_warning(self, warning_msg):
         """경고 추가"""
         self.warnings.append(warning_msg)
+    
+    def add_korean_recipient_issue(self, korean_orders_df, site_name):
+        """한글 수령인명으로 인한 EMS 제외 이슈 추가"""
+        if korean_orders_df.empty:
+            return
+        
+        issue_details = []
+        issue_details.append(f"이상 발견: {site_name} 해외 발송 명단 - 수령인의 이름이 한글로 확인")
+        issue_details.append(f"제외된 주문 {len(korean_orders_df)}개:")
+        
+        for idx, row in korean_orders_df.iterrows():
+            order_id = row.get('주문번호', 'N/A')
+            recipient = row.get('수령인명', 'N/A')
+            address = str(row.get('배송지주소', ''))[:50] + "..." if len(str(row.get('배송지주소', ''))) > 50 else str(row.get('배송지주소', ''))
+            issue_details.append(f"  • 주문번호 {order_id}: '{recipient}' → {address}")
+        
+        issue_details.append("※ EMS는 영문 수령인명만 허용되므로 해당 주문들은 주문서에서 제외되었습니다.")
+        
+        self.add_warning("\n".join(issue_details))
     
     def get_summary(self):
         """처리 결과 요약 반환"""

@@ -8,7 +8,7 @@ import requests
 import re
 import time
 import os
-from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product, processing_results
+from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product, processing_results, filter_korean_recipients
 
 def normalize_address_with_google_maps(address, api_key):
     """Google Maps API를 사용한 주소 정규화 및 국가코드 추출"""
@@ -94,10 +94,14 @@ def reconstruct_address_from_components(components, original_address):
     if apt_match and not subpremise:
         subpremise = apt_match.group(1)
     
-    # 주소 재구성 - 국제 배송 표준 형식
+    # 주소 재구성 - EMS 국제 배송 표준 형식
     address_parts = []
     
-    # 1. 거리 주소 (거리명 + 번호)
+    # 1. 호수/방 번호 (EMS에서는 맨 앞에 위치)
+    if subpremise:
+        address_parts.append(f"Room {subpremise}")
+    
+    # 2. 거리 주소 (거리명 + 번호)
     if route and street_number:
         street_address = f"{route} {street_number}"
         address_parts.append(street_address)
@@ -106,10 +110,6 @@ def reconstruct_address_from_components(components, original_address):
         if street_number:
             street_address += f" {street_number}"
         address_parts.append(street_address)
-    
-    # 2. 호수/방 번호 (별도 라인)
-    if subpremise:
-        address_parts.append(f"Room {subpremise}")
     
     # 3. 우편번호 + 도시 (국제 표준)
     if postal_code and locality:
@@ -207,9 +207,22 @@ def process_mini_international_orders(df):
         processing_results.add_international_orders(0)
         return
     
+    # 한글 수령인명 필터링 (EMS는 영문 이름만 허용)
+    print("🔍 한글 수령인명 확인 중...")
+    overseas, korean_recipients = filter_korean_recipients(overseas)
+    
+    # 한글 수령인명 이슈 기록
+    if not korean_recipients.empty:
+        processing_results.add_korean_recipient_issue(korean_recipients, "미니학습지")
+    
+    if overseas.empty:
+        print("✅ 미니학습지: 한글 수령인명 제외 후 유효한 해외 배송 주문 없음")
+        processing_results.add_international_orders(0)
+        return
+    
     # 데이터 처리 (쇼핑몰상품코드는 이미 원래 SKU로 설정됨)
     overseas["수령인연락처1"] = overseas["수령인 연락처"]
-    overseas["수령인연락처2"] = overseas["수령인 연락처"]
+    overseas["수령인연락처2"] = overseas["수령인 이메일"]  # EMS는 연락처2에 이메일 사용
     overseas["송장번호"] = ""
     overseas["국가코드"] = ""
     

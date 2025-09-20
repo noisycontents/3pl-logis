@@ -5,7 +5,7 @@
 import pandas as pd
 from datetime import datetime
 import os
-from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product, processing_results
+from common_utils import DOWNLOAD_DIR, is_korean_address, apply_string_format, is_pure_digital_product, processing_results, filter_korean_recipients
 from mini_international import process_overseas_addresses
 
 def process_dok_international_orders(df):
@@ -56,9 +56,22 @@ def process_dok_international_orders(df):
         print("✅ 독독독: 해외 실물 배송 주문 없음 (디지털/B2B 제외)")
         return
     
+    # 한글 수령인명 필터링 (EMS는 영문 이름만 허용)
+    print("🔍 한글 수령인명 확인 중...")
+    overseas, korean_recipients = filter_korean_recipients(overseas)
+    
+    # 한글 수령인명 이슈 기록
+    if not korean_recipients.empty:
+        processing_results.add_korean_recipient_issue(korean_recipients, "독독독")
+    
+    if overseas.empty:
+        print("✅ 독독독: 한글 수령인명 제외 후 유효한 해외 배송 주문 없음")
+        processing_results.add_international_orders(0)
+        return
+    
     # 데이터 처리 (쇼핑몰상품코드는 이미 원래 SKU로 설정됨)
     overseas["수령인연락처1"] = overseas["수령인 연락처"]
-    overseas["수령인연락처2"] = overseas["수령인 연락처"]
+    overseas["수령인연락처2"] = overseas["수령인 이메일"]  # EMS는 연락처2에 이메일 사용
     overseas["송장번호"] = ""
     overseas["국가코드"] = ""
     
