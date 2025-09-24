@@ -1,0 +1,76 @@
+name: 3PL Tracking Automation
+
+on:
+  schedule:
+    # 월~금요일 KST 15:05 (오후 3시 5분)에 실행
+    # UTC 기준: KST는 UTC+9이므로 06:05
+    - cron: '5 6 * * 1-5'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  tracking_processing:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir numpy==1.24.3
+        pip install --no-cache-dir -r requirements.txt
+        
+    - name: Set timezone to KST
+      run: |
+        sudo timedatectl set-timezone Asia/Seoul
+        
+    - name: Run tracking updater
+      env:
+        # 미니학습지 환경변수
+        WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+        WP_WOO_CONSUMER_KEY: ${{ secrets.WP_WOO_CONSUMER_KEY }}
+        WP_WOO_CONSUMER_SECRET: ${{ secrets.WP_WOO_CONSUMER_SECRET }}
+        
+        # 독독독 환경변수
+        DOK_WP_BASE_URL: ${{ secrets.DOK_WP_BASE_URL }}
+        DOK_WP_WOO_CONSUMER_KEY: ${{ secrets.DOK_WP_WOO_CONSUMER_KEY }}
+        DOK_WP_WOO_CONSUMER_SECRET: ${{ secrets.DOK_WP_WOO_CONSUMER_SECRET }}
+        
+        # Google Service Account (개별 필드)
+        GOOGLE_PROJECT_ID: ${{ secrets.GOOGLE_PROJECT_ID }}
+        GOOGLE_PRIVATE_KEY_ID: ${{ secrets.GOOGLE_PRIVATE_KEY_ID }}
+        GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+        GOOGLE_CLIENT_EMAIL: ${{ secrets.GOOGLE_CLIENT_EMAIL }}
+        GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        GOOGLE_AUTH_URI: ${{ secrets.GOOGLE_AUTH_URI }}
+        GOOGLE_TOKEN_URI: ${{ secrets.GOOGLE_TOKEN_URI }}
+        GOOGLE_AUTH_PROVIDER_X509_CERT_URL: ${{ secrets.GOOGLE_AUTH_PROVIDER_X509_CERT_URL }}
+        GOOGLE_CLIENT_X509_CERT_URL: ${{ secrets.GOOGLE_CLIENT_X509_CERT_URL }}
+        GOOGLE_SHARED_DRIVE_ID: ${{ secrets.GOOGLE_SHARED_DRIVE_ID }}
+        GOOGLE_FOLDER_ID: ${{ secrets.GOOGLE_FOLDER_ID }}
+        
+        # 이메일 설정 (결과 보고용)
+        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        LOGIS_EMAIL_RECIPIENT: ${{ secrets.LOGIS_EMAIL_RECIPIENT }}
+        
+      run: |
+        echo "📦 3PL Tracking Updater 시작 - $(date '+%Y-%m-%d %H:%M:%S KST')"
+        python tracking_updater.py
+        
+    - name: Upload logs only
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: tracking-logs-${{ github.run_number }}
+        path: |
+          *.log
+        retention-days: 3
