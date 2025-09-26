@@ -19,7 +19,7 @@ from mini_status import process_mini_reservation_status_change, process_mini_dig
 from dok_domestic import process_dok_domestic_orders
 from dok_international import process_dok_international_orders
 from dok_status import process_dok_reservation_status_change, process_dok_digital_status_change, process_dok_b2b_status_change
-from email_sender import collect_shipping_files, send_shipping_files_email, send_processing_result_email
+from email_sender import collect_shipping_files, send_shipping_files_email, send_processing_result_email, backup_files_to_drive
 from happy_together_processor import process_single_order
 
 # .env 파일 로드
@@ -234,6 +234,15 @@ def main():
             success = send_shipping_files_email(shipping_files, recipient_email)
             if success:
                 print("✅ 배송 주문서 이메일 발송 완료!")
+                
+                # 이메일 발송 성공 후 Google Drive 백업
+                print("\n☁️ Google Drive 백업 시작...")
+                backup_success = backup_files_to_drive(shipping_files)
+                if backup_success:
+                    print("✅ Google Drive 백업 완료!")
+                else:
+                    print("⚠️ Google Drive 백업 실패 (이메일 발송은 성공)")
+                    processing_results.add_warning("Google Drive 백업 실패")
             else:
                 print("❌ 이메일 발송 실패")
     else:
@@ -255,6 +264,16 @@ def main():
         print("✅ 처리 결과 이메일 발송 완료!")
     else:
         print("❌ 처리 결과 이메일 발송 실패")
+    
+    # 사서함 파일들도 Google Drive에 백업
+    if po_box_file_paths:
+        print("\n☁️ 사서함 주문 파일 Google Drive 백업...")
+        po_box_backup_success = backup_files_to_drive(po_box_file_paths)
+        if po_box_backup_success:
+            print("✅ 사서함 파일 Google Drive 백업 완료!")
+        else:
+            print("⚠️ 사서함 파일 Google Drive 백업 실패")
+            processing_results.add_warning("사서함 파일 Google Drive 백업 실패")
     
     print("\n=== 전체 처리 완료 ===")
 
