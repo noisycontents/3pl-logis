@@ -304,7 +304,6 @@ def create_new_order_for_friend(friend_email, product_name, original_order_id, o
         
         if customer_id:
             # ✅ 회원 주문
-            order_status = "shipped"  # 기존 사용자 = 배송완료
             billing_info = {
                 "first_name": friend_email.split('@')[0],
                 "last_name": "",
@@ -315,7 +314,6 @@ def create_new_order_for_friend(friend_email, product_name, original_order_id, o
         else:
             # 게스트로 폴백
             customer_id = 0
-            order_status = "processing"  # 신규 사용자 = 진행중
             billing_info = {
                 "first_name": friend_email.split('@')[0],
                 "last_name": "",
@@ -326,16 +324,14 @@ def create_new_order_for_friend(friend_email, product_name, original_order_id, o
     else:
         # 원 주문자로 주문 생성
         customer_id = original_customer_info.get('customer_id', 0)
-        order_status = "shipped"
         billing_info = original_customer_info.get('billing', {})
         print(f"📋 원 주문자로 주문 생성")
     
-    # 새 주문 데이터
+    # 새 주문 데이터 (상태는 기본값으로 생성 후 순차 업데이트)
     new_order_data = {
         "payment_method": "",
         "payment_method_title": "1&1 친구언어 자동 추가",
         "set_paid": True,
-        "status": order_status,
         "customer_id": customer_id,
         "billing": billing_info,
         "shipping": billing_info,
@@ -388,6 +384,11 @@ def create_new_order_for_friend(friend_email, product_name, original_order_id, o
             print(f"📦 새 주문번호: {new_order_id}")
             print(f"📧 친구 이메일: {friend_email}")
             print(f"🎁 상품명: {product_name}")
+            
+            # 주문 상태 순차 업데이트: 진행중 → 완료됨 → 배송완료
+            print(f"🔄 주문 상태 순차 업데이트 시작...")
+            update_order_status_sequentially(new_order_id, base_url, consumer_key, consumer_secret)
+            
             return new_order_id
         else:
             print(f"❌ 친구 주문 생성 실패: {response.status_code}")
@@ -397,6 +398,44 @@ def create_new_order_for_friend(friend_email, product_name, original_order_id, o
     except Exception as e:
         print(f"❌ 친구 주문 생성 오류: {e}")
         return False
+
+def update_order_status_sequentially(order_id, base_url, consumer_key, consumer_secret):
+    """주문 상태를 순차적으로 업데이트: 진행중 → 완료됨 → 배송완료"""
+    import time
+    
+    # 상태 업데이트 순서
+    status_sequence = [
+        ("completed", "완료됨"),
+        ("shipped", "배송완료")
+    ]
+    
+    order_url = f"{base_url}/wp-json/wc/v3/orders/{order_id}"
+    
+    for status, status_name in status_sequence:
+        try:
+            update_data = {"status": status}
+            
+            if base_url.startswith('https://'):
+                params = {
+                    'consumer_key': consumer_key,
+                    'consumer_secret': consumer_secret
+                }
+                response = requests.put(order_url, json=update_data, params=params, timeout=10)
+            else:
+                auth = (consumer_key, consumer_secret)
+                response = requests.put(order_url, json=update_data, auth=auth, timeout=10)
+            
+            if response.status_code == 200:
+                print(f"✅ 주문 상태 업데이트: {status_name}")
+                time.sleep(1)  # 1초 대기 후 다음 상태로
+            else:
+                print(f"⚠️ 상태 업데이트 실패 ({status_name}): {response.status_code}")
+                print(f"   응답: {response.text[:100]}")
+                
+        except Exception as e:
+            print(f"❌ 상태 업데이트 오류 ({status_name}): {e}")
+    
+    print(f"🎉 주문 상태 순차 업데이트 완료!")
 
 def get_order_details_with_options(order_id):
     """주문 상세 정보 및 옵션 조회"""
@@ -421,18 +460,6 @@ def get_order_details_with_options(order_id):
     except Exception as e:
         print(f'❌ 주문 상세 조회 오류: {e}')
         return None
-
-def determine_product_variation(second_language, paper_type):
-    """상품 옵션에 따른 상품명 결정"""
-    
-    # 실제 학습지 유형에 따른 상품명 결정
-    if paper_type == 'digital' or paper_type == 'digitalonly':
-        product_name = f"1&1-{second_language} 스타터팩[디지털학습지]"
-    else:  # paperdigital 또는 기타
-        product_name = f"1&1-{second_language} 스타터팩"
-    
-    print(f"📋 상품명 결정: {paper_type} → {product_name}")
-    return product_name
 
 def process_single_order(order_id):
     """단일 주문에 대한 해피투게더 처리"""

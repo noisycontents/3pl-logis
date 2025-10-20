@@ -220,6 +220,80 @@ def download_tracking_data(sheets_service, spreadsheet_id, max_retries=3):
     return None
 
 
+def add_customer_note_for_ems(order_id, tracking_number, site="mini"):
+    """EMS 주문에 고객 메모 추가"""
+    
+    # 사이트별 환경변수
+    if site == "mini":
+        base_url = os.getenv('WP_BASE_URL')
+        consumer_key = os.getenv('WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('WP_WOO_CONSUMER_SECRET')
+    elif site == "dok":
+        base_url = os.getenv('DOK_WP_BASE_URL')
+        consumer_key = os.getenv('DOK_WP_WOO_CONSUMER_KEY')
+        consumer_secret = os.getenv('DOK_WP_WOO_CONSUMER_SECRET')
+    else:
+        print(f"❌ 지원하지 않는 사이트: {site}")
+        return False
+    
+    if not all([base_url, consumer_key, consumer_secret]):
+        print(f"❌ {site} 사이트 환경변수가 설정되지 않았습니다")
+        return False
+    
+    # EMS 고객 메모 내용
+    ems_note = f"""우체국 EMS 접수가 완료 되었습니다.
+송장 번호 등록 영업일 기준 1일 후 실제 발송이 시작됩니다.
+아래 링크로 접속하셔서 송장번호를 검색하시면 우체국 홈페이지에서 추적 가능합니다.
+
+우체국 국제우편 배송조회 : https://service.epost.go.kr/trace.RetrieveEmsRigiTrace.comm
+송장번호 : {tracking_number}
+
+현재 배송기간은 발송일로부터 약 1-2주로 확인됩니다. 미수령으로 인한 반송은 반송비용과 재발송료가 추가 될 수 있으니 참고해주시기 바랍니다. 또한, 해외배송의 경우 배송되는 국가에 따라 관세를 지불해주셔야 합니다.(특히 EU 지역) 이 경우 관세는 수령하시는 본인이 지불해주셔야합니다. 영수증이 필요하시면 발급하여 메일로 보내드리겠습니다."""
+    
+    # 주문 노트 추가 API 호출
+    notes_url = f"{base_url}/wp-json/wc/v3/orders/{order_id}/notes"
+    
+    note_data = {
+        "note": ems_note,
+        "customer_note": True,  # 고객에게 노트하기
+        "added_by_user": True
+    }
+    
+    try:
+        if base_url.startswith('https://'):
+            params = {
+                'consumer_key': consumer_key,
+                'consumer_secret': consumer_secret
+            }
+            response = requests.post(
+                notes_url,
+                params=params,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(note_data),
+                timeout=15
+            )
+        else:
+            auth = (consumer_key, consumer_secret)
+            response = requests.post(
+                notes_url,
+                auth=auth,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(note_data),
+                timeout=15
+            )
+        
+        if response.status_code == 201:
+            print(f"✅ EMS 고객 메모 추가 성공: 주문 {order_id}")
+            return True
+        else:
+            print(f"❌ EMS 고객 메모 추가 실패: {response.status_code}")
+            print(f"❌ 응답: {response.text[:200]}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ EMS 고객 메모 추가 오류: {e}")
+        return False
+
 def update_woocommerce_tracking(order_id, tracking_number, carrier_code="HANJIN", carrier_name="한진택배", site="mini"):
     """WooCommerce 주문에 송장번호 업데이트 (엠샵 플러그인 연동)"""
     
@@ -734,6 +808,10 @@ def process_batch_for_site(orders, site):
             "meta_data": meta_data,
             "status": "shipping"
         })
+        
+        # EMS인 경우 고객 메모 추가 (배치 처리 후 개별 처리)
+        if order['carrier_code'] == 'EMS':
+            order['needs_ems_note'] = True
     
     # API 호출
     try:
@@ -766,6 +844,24 @@ def process_batch_for_site(orders, site):
                     print(f"   ⚠️ 알 수 없는 응답: {item}")
             
             print(f"   ✅ {site} 배치 완료: {success_count}개 성공, {failed_count}개 실패")
+            
+            # EMS 주문에 고객 메모 추가 (배치 처리 성공한 경우만)
+            ems_note_success = 0
+            ems_note_failed = 0
+            
+            for i, order in enumerate(orders):
+                if order.get('needs_ems_note') and i < len(update_results):
+                    result_item = update_results[i]
+                    # 해당 주문이 성공적으로 업데이트된 경우에만 메모 추가
+                    if 'error' not in result_item and 'id' in result_item:
+                        if add_customer_note_for_ems(order['order_id'], order['tracking_number'], site):
+                            ems_note_success += 1
+                        else:
+                            ems_note_failed += 1
+            
+            if ems_note_success > 0 or ems_note_failed > 0:
+                print(f"   📝 EMS 고객 메모: {ems_note_success}개 성공, {ems_note_failed}개 실패")
+            
             return success_count, failed_count
         else:
             print(f"   ❌ {site} 배치 실패: {response.status_code}")
