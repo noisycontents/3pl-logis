@@ -24,6 +24,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --no-cache-dir numpy==1.24.3
+        pip install --no-cache-dir packaging==23.2
         pip install --no-cache-dir -r requirements.txt
         
     - name: Set timezone to KST
